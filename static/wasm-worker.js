@@ -275,7 +275,7 @@ function workCycleLoop() {
         const res = exports.workCycle();
         const endTime = performance.now();
         const executionTime = endTime - startTime;
-        if (res && executionTime > 3) {
+        if (executionTime > 3) {
             console.log(
                 `workCycle execution time: ${executionTime} milliseconds`
             );

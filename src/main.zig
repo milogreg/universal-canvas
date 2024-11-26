@@ -861,219 +861,282 @@ fn printDigits() void {
     jsPrint("digits: {any}", .{list.items});
 }
 
-export fn workCycle() bool {
-    const at_min_edge_y = quadrant_offset_digits[0].array.isMinY();
-    const at_min_edge_x = quadrant_offset_digits[0].array.isMinX();
+const WorkCycleState = struct {
+    update_position: UpdatePosition,
+    fill_pixels: FillPixels,
+    refresh_display: RefreshDisplay,
 
-    backup_client.at_max_border_x = at_min_edge_x;
-    backup_client.at_max_border_y = at_min_edge_y;
+    pub const init: WorkCycleState = .{
+        .update_position = .{},
+        .fill_pixels = .{},
+        .refresh_display = .{},
+    };
 
-    const at_edge_y = quadrant_offset_digits[3].array.isMaxY();
-    const at_edge_x = quadrant_offset_digits[3].array.isMaxX();
-
-    backup_client.at_min_border_x = at_edge_x;
-    backup_client.at_min_border_y = at_edge_y;
-
-    if (!backup_client.inBounds() and quadrant_offset_digits[0].array.length > 1) {
-        //  and quadrant_offset_digits[0].array.length > 1
-
-        const movement_unit = @as(f64, @floatFromInt(backup_client.canvas_width)) * 0.5 * backup_client.zoom;
-
-        var increment_digit: u2 = 0;
-        var decrement_digit: u2 = 0;
-
-        const max_offset_x: f64 = 0;
-        const max_offset_y: f64 = 0;
-
-        const min_offset_x = backup_client.minOffsetX();
-        const min_offset_y = backup_client.minOffsetY();
-
-        const offset_x = if (at_min_edge_x)
-            @min(max_offset_x, backup_client.offset_x)
-        else if (at_edge_x)
-            @max(min_offset_x, backup_client.offset_x)
-        else
-            backup_client.offset_x;
-
-        // const offset_x = backup_client.offset_x;
-
-        const offset_y = if (at_min_edge_y)
-            @min(max_offset_y, backup_client.offset_y)
-        else if (at_edge_y)
-            @max(min_offset_y, backup_client.offset_y)
-        else
-            backup_client.offset_y;
-
-        // const offset_y = backup_client.offset_y;
-
-        if (offset_x < min_offset_x and offset_x + movement_unit <= max_offset_x) {
-            increment_digit |= 0b01;
+    const UpdatePosition = struct {
+        pub fn canIterate(this: UpdatePosition) bool {
+            _ = this; // autofix
+            return true;
         }
 
-        if (offset_y < min_offset_y and offset_y + movement_unit <= max_offset_y) {
-            increment_digit |= 0b10;
-        }
+        pub fn iterate(this: *UpdatePosition, iteration_amount: usize) bool {
+            if (parent_square_size < 2) {
+                parent_square_size = 2;
+                state_iteration_count = 0;
 
-        if (offset_x > max_offset_x and offset_x - movement_unit >= min_offset_x) {
-            decrement_digit |= 0b01;
-        }
-
-        if (offset_y > max_offset_y and offset_y - movement_unit >= min_offset_y) {
-            decrement_digit |= 0b10;
-        }
-
-        backup_client.digitIncrement(increment_digit);
-
-        backup_client.digitDecrement(decrement_digit);
-
-        digitIncrement(increment_digit);
-        digitDecrement(decrement_digit);
-
-        if (increment_digit == 0 and decrement_digit == 0) {
-            var additional_decrement: u2 = 0;
-
-            if (quadrant_offset_digits[0].array.isMaxXBelow(quadrant_offset_digits[0].array.length - 1)) {
-                additional_decrement |= 0b01;
+                return true;
             }
 
-            if (quadrant_offset_digits[0].array.isMaxYBelow(quadrant_offset_digits[0].array.length - 1)) {
-                additional_decrement |= 0b10;
-            }
+            _ = this; // autofix
+            _ = iteration_amount; // autofix
+            const at_min_edge_y = quadrant_offset_digits[0].array.isMinY();
+            const at_min_edge_x = quadrant_offset_digits[0].array.isMinX();
 
-            const last_digit = quadrant_offset_digits[0].array.get(quadrant_offset_digits[0].array.length - 1);
+            backup_client.at_max_border_x = at_min_edge_x;
+            backup_client.at_max_border_y = at_min_edge_y;
 
-            backup_client.removeDigit(last_digit);
-            backup_client.digitDecrement(additional_decrement);
+            const at_edge_y = quadrant_offset_digits[3].array.isMaxY();
+            const at_edge_x = quadrant_offset_digits[3].array.isMaxX();
 
-            removeDigitAndDecrement(additional_decrement);
-        }
+            backup_client.at_min_border_x = at_edge_x;
+            backup_client.at_min_border_y = at_edge_y;
 
-        state_iteration_count = 0;
-        position_dirty = true;
-        parent_square_size = 64;
-    } else if (backup_client.zoom >= 2 and backup_client.inBounds()) {
-        outer: for (0..4) |increment_digit| {
-            for (0..4) |append_digit| {
-                if ((at_edge_x and append_digit & 1 == 1 and increment_digit & 1 == 1) or
-                    (at_edge_y and append_digit >> 1 == 1 and increment_digit >> 1 == 1))
-                {
-                    continue;
+            if (!backup_client.inBounds() and quadrant_offset_digits[0].array.length > 1) {
+                //  and quadrant_offset_digits[0].array.length > 1
+
+                const movement_unit = @as(f64, @floatFromInt(backup_client.canvas_width)) * 0.5 * backup_client.zoom;
+
+                var increment_digit: u2 = 0;
+                var decrement_digit: u2 = 0;
+
+                const max_offset_x: f64 = 0;
+                const max_offset_y: f64 = 0;
+
+                const min_offset_x = backup_client.minOffsetX();
+                const min_offset_y = backup_client.minOffsetY();
+
+                const offset_x = if (at_min_edge_x)
+                    @min(max_offset_x, backup_client.offset_x)
+                else if (at_edge_x)
+                    @max(min_offset_x, backup_client.offset_x)
+                else
+                    backup_client.offset_x;
+
+                // const offset_x = backup_client.offset_x;
+
+                const offset_y = if (at_min_edge_y)
+                    @min(max_offset_y, backup_client.offset_y)
+                else if (at_edge_y)
+                    @max(min_offset_y, backup_client.offset_y)
+                else
+                    backup_client.offset_y;
+
+                // const offset_y = backup_client.offset_y;
+
+                if (offset_x < min_offset_x and offset_x + movement_unit <= max_offset_x) {
+                    increment_digit |= 0b01;
                 }
 
-                var test_client = backup_client;
-
-                test_client.digitIncrement(@intCast(increment_digit));
-
-                test_client.appendDigit(@intCast(append_digit));
-
-                const initial_states = offset_initial_states;
-
-                digitIncrementAndAppend(@intCast(increment_digit), @intCast(append_digit));
-
-                {
-                    test_client.at_max_border_x = quadrant_offset_digits[0].array.isMinX();
-                    test_client.at_max_border_y = quadrant_offset_digits[0].array.isMinY();
-
-                    test_client.at_min_border_x = quadrant_offset_digits[3].array.isMaxX();
-                    test_client.at_min_border_y = quadrant_offset_digits[3].array.isMaxY();
+                if (offset_y < min_offset_y and offset_y + movement_unit <= max_offset_y) {
+                    increment_digit |= 0b10;
                 }
 
-                if (test_client.inBounds()) {
-                    backup_client = test_client;
+                if (offset_x > max_offset_x and offset_x - movement_unit >= min_offset_x) {
+                    decrement_digit |= 0b01;
+                }
 
-                    state_iteration_count = 0;
-                    position_dirty = true;
+                if (offset_y > max_offset_y and offset_y - movement_unit >= min_offset_y) {
+                    decrement_digit |= 0b10;
+                }
 
-                    const square_size_shift: usize = @intFromFloat(@max(0, (std.math.log2(display_client.zoom / 2))));
+                backup_client.digitIncrement(increment_digit);
 
-                    if (parent_square_size > display_square_size >> @intCast(square_size_shift)) {
-                        parent_square_size = display_square_size >> @intCast(square_size_shift);
+                backup_client.digitDecrement(decrement_digit);
+
+                digitIncrement(increment_digit);
+                digitDecrement(decrement_digit);
+
+                if (increment_digit == 0 and decrement_digit == 0) {
+                    var additional_decrement: u2 = 0;
+
+                    if (quadrant_offset_digits[0].array.isMaxXBelow(quadrant_offset_digits[0].array.length - 1)) {
+                        additional_decrement |= 0b01;
                     }
 
-                    break :outer;
+                    if (quadrant_offset_digits[0].array.isMaxYBelow(quadrant_offset_digits[0].array.length - 1)) {
+                        additional_decrement |= 0b10;
+                    }
+
+                    const last_digit = quadrant_offset_digits[0].array.get(quadrant_offset_digits[0].array.length - 1);
+
+                    backup_client.removeDigit(last_digit);
+                    backup_client.digitDecrement(additional_decrement);
+
+                    removeDigitAndDecrement(additional_decrement);
                 }
 
-                removeDigitAndDecrement(@intCast(increment_digit));
+                state_iteration_count = 0;
+                position_dirty = true;
+                parent_square_size = 64;
 
-                offset_initial_states = initial_states;
+                return true;
+            } else if (backup_client.zoom >= 2 and backup_client.inBounds()) {
+                for (0..4) |increment_digit| {
+                    for (0..4) |append_digit| {
+                        if ((at_edge_x and append_digit & 1 == 1 and increment_digit & 1 == 1) or
+                            (at_edge_y and append_digit >> 1 == 1 and increment_digit >> 1 == 1))
+                        {
+                            continue;
+                        }
+
+                        var test_client = backup_client;
+
+                        test_client.digitIncrement(@intCast(increment_digit));
+
+                        test_client.appendDigit(@intCast(append_digit));
+
+                        const initial_states = offset_initial_states;
+
+                        digitIncrementAndAppend(@intCast(increment_digit), @intCast(append_digit));
+
+                        {
+                            test_client.at_max_border_x = quadrant_offset_digits[0].array.isMinX();
+                            test_client.at_max_border_y = quadrant_offset_digits[0].array.isMinY();
+
+                            test_client.at_min_border_x = quadrant_offset_digits[3].array.isMaxX();
+                            test_client.at_min_border_y = quadrant_offset_digits[3].array.isMaxY();
+                        }
+
+                        if (test_client.inBounds()) {
+                            backup_client = test_client;
+
+                            state_iteration_count = 0;
+                            position_dirty = true;
+
+                            const square_size_shift: usize = @intFromFloat(@max(0, (std.math.log2(display_client.zoom / 2))));
+
+                            if (parent_square_size > display_square_size >> @intCast(square_size_shift)) {
+                                parent_square_size = display_square_size >> @intCast(square_size_shift);
+                            }
+
+                            return true;
+                        }
+
+                        removeDigitAndDecrement(@intCast(increment_digit));
+
+                        offset_initial_states = initial_states;
+                    }
+                }
+            }
+
+            return false;
+        }
+    };
+
+    const FillPixels = struct {
+        pub fn canIterate(this: FillPixels) bool {
+            _ = this; // autofix
+            return !iteration_done or state_iteration_count == 0;
+        }
+
+        pub fn iterate(this: *FillPixels, iteration_amount: usize) bool {
+            _ = this; // autofix
+            _ = iteration_amount; // autofix
+
+            const start_time = js.getTime();
+
+            _ = fillPixelsIterate(parent_square_size, backup_client.zoom, 0, 0);
+
+            const end_time = js.getTime();
+
+            if (end_time - start_time > 3) {
+                jsPrint("fillPixelsIterate time: {d} ms", .{end_time - start_time});
+            }
+
+            return !iteration_done;
+        }
+    };
+
+    const RefreshDisplay = struct {
+        pub fn canIterate(this: RefreshDisplay) bool {
+            _ = this; // autofix
+            return display_square_size != parent_square_size or updated_position or parent_square_size == 2;
+        }
+
+        pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
+            _ = this; // autofix
+            _ = iteration_amount; // autofix
+            // if ((display_square_size != parent_square_size or updated_position or parent_square_size == 2) and iteration_done) {
+            if (display_pixels.len != parent_pixels.len) {
+                if (display_pixels.len != 0) {
+                    allocator.free(display_pixels);
+                }
+                display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+            }
+
+            updated_position = false;
+
+            display_client = backup_client;
+
+            display_square_size = parent_square_size;
+            @memcpy(display_pixels, parent_pixels);
+
+            const adjusted_old_display_square_size = @as(f64, @floatFromInt(old_display_square_size)) / old_display_client.zoom;
+            const adjusted_display_square_size = @as(f64, @floatFromInt(display_square_size)) / display_client.zoom;
+
+            const area_ratio = old_display_client.areaInViewportRatio();
+
+            if (wait_until_backup or
+                old_display_pixels.len == 0 or
+                @as(f64, @floatFromInt(display_square_size)) >= @min(@as(f64, @floatFromInt(old_display_square_size)), (@as(f64, @floatFromInt(old_display_square_size)) * old_display_client.zoom * 2)) or
+                area_ratio == 0 or
+                adjusted_old_display_square_size < adjusted_display_square_size)
+            {
+                old_display_client = display_client;
+
+                if (old_display_pixels.len != 0) {
+                    allocator.free(old_display_pixels);
+                }
+                old_display_pixels = allocator.alloc(render.Color, display_pixels.len) catch @panic("OOM");
+                old_display_square_size = display_square_size;
+                @memcpy(old_display_pixels, display_pixels);
+            }
+
+            wait_until_backup = false;
+
+            if (parent_square_size < max_square_size) {
+                parent_square_size *= 2;
+                state_iteration_count = 0;
+            }
+            // }
+
+            return false;
+        }
+    };
+
+    // Return value is meaningless right now.
+    pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
+        if (this.update_position.canIterate()) {
+            _ = this.update_position.iterate(iteration_amount);
+        }
+
+        has_max_detail = iteration_done and state_iteration_count != 0 and display_square_size == max_square_size;
+
+        if (this.fill_pixels.canIterate()) {
+            if (!this.fill_pixels.iterate(iteration_amount)) {
+                if (this.refresh_display.canIterate()) {
+                    _ = this.refresh_display.iterate(iteration_amount);
+                }
             }
         }
-    }
 
-    if (parent_square_size < 2) {
-        parent_square_size = 2;
-        state_iteration_count = 0;
-    }
-
-    has_max_detail = iteration_done and state_iteration_count != 0 and display_square_size == max_square_size;
-
-    if (iteration_done and state_iteration_count != 0) {
         return true;
     }
+};
 
-    const offset_scale_x = @as(f64, @floatFromInt(parent_square_size)) / @as(f64, @floatFromInt(backup_client.canvas_width));
-    _ = offset_scale_x; // autofix
+var work_cycle_state = WorkCycleState.init;
 
-    const offset_scale_y = @as(f64, @floatFromInt(parent_square_size)) / @as(f64, @floatFromInt(backup_client.canvas_height));
-    _ = offset_scale_y; // autofix
-
-    // _ = fillPixelsIterate(parent_square_size, backup_client.zoom, -backup_client.offset_x * offset_scale_x, -backup_client.offset_y * offset_scale_y);
-
-    const start_time = js.getTime();
-
-    _ = fillPixelsIterate(parent_square_size, backup_client.zoom, 0, 0);
-
-    const end_time = js.getTime();
-
-    if (end_time - start_time > 3) {
-        jsPrint("fillPixelsIterate time: {d} ms", .{end_time - start_time});
-    }
-
-    if ((display_square_size != parent_square_size or updated_position or parent_square_size == 2) and iteration_done) {
-        if (display_pixels.len != parent_pixels.len) {
-            if (display_pixels.len != 0) {
-                allocator.free(display_pixels);
-            }
-            display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
-        }
-
-        updated_position = false;
-
-        display_client = backup_client;
-
-        display_square_size = parent_square_size;
-        @memcpy(display_pixels, parent_pixels);
-
-        const adjusted_old_display_square_size = @as(f64, @floatFromInt(old_display_square_size)) / old_display_client.zoom;
-        const adjusted_display_square_size = @as(f64, @floatFromInt(display_square_size)) / display_client.zoom;
-
-        const area_ratio = old_display_client.areaInViewportRatio();
-
-        if (wait_until_backup or
-            old_display_pixels.len == 0 or
-            @as(f64, @floatFromInt(display_square_size)) >= @min(@as(f64, @floatFromInt(old_display_square_size)), (@as(f64, @floatFromInt(old_display_square_size)) * old_display_client.zoom * 2)) or
-            area_ratio == 0 or
-            adjusted_old_display_square_size < adjusted_display_square_size)
-        {
-            old_display_client = display_client;
-
-            if (old_display_pixels.len != 0) {
-                allocator.free(old_display_pixels);
-            }
-            old_display_pixels = allocator.alloc(render.Color, display_pixels.len) catch @panic("OOM");
-            old_display_square_size = display_square_size;
-            @memcpy(old_display_pixels, display_pixels);
-        }
-
-        wait_until_backup = false;
-
-        if (parent_square_size < max_square_size) {
-            parent_square_size *= 2;
-            state_iteration_count = 0;
-        }
-    }
-
-    return false;
+export fn workCycle() bool {
+    return work_cycle_state.cycle(iteration_rate);
 }
 
 export fn init() void {
