@@ -195,8 +195,6 @@ self.onmessage = async function (e) {
         case "findImage": {
             const size = findImageData.data.length;
 
-            console.log("LNNN", Math.sqrt(findImageData.data.length));
-
             const offsetPtr = exports.findImageAlloc(size);
 
             const offsetMemory = new Uint8ClampedArray(

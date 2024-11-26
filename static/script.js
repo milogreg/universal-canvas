@@ -726,40 +726,6 @@ setPositionButton.onclick = async () => {
     }
 };
 
-// const uploadButton = document.getElementById("find-image-input");
-
-// uploadButton.addEventListener("change", async (event) => {
-//     const file = event.target.files[0];
-//     const image = await loadImage(file);
-
-//     const resizedImage = resizeImage(image, 2048, 2048);
-//     const imageData = getImageData(resizedImage);
-//     // Use the imageData as needed
-
-//     canvasFadeOut();
-
-//     renderCache = undefined;
-//     imageDirty = true;
-//     loading = true;
-
-//     await new Promise((resolve) => {
-//         const handleWorkerMessage = (e) => {
-//             if (e.data.type === "findImageComplete") {
-//                 worker.removeEventListener("message", handleWorkerMessage);
-//                 resolve();
-//             }
-//         };
-//         worker.addEventListener("message", handleWorkerMessage);
-//         worker.postMessage({
-//             type: "findImage",
-//             // offsetArray: Array.from({ length: 1000 }, () =>
-//             //     Math.floor(Math.random() * 3)
-//             // ),
-//             findImageData: imageData,
-//         });
-//     });
-// });
-
 const findImageInput = document.getElementById("find-image-input");
 const findImageDropZone = document.getElementById("find-image-drop-zone");
 
