@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Square</title>
+        <link rel="stylesheet" href="style.css" />
+        <link rel="stylesheet" href="normalize.css" />
+        <link
+            rel="shortcut icon"
+            href="data:image/x-icon;,"
+            type="image/x-icon"
+        />
+    </head>
+    <body>
+        <main>
+            <div class="main-container">
+                <div class="canvas-container">
+                    <canvas id="main-canvas"></canvas>
+                    <div id="canvas-loading"></div>
+                </div>
+
+                <div class="config-container">
+                    <div>
+                        <table>
+                            <tr>
+                                <td>
+                                    <label for="zoom-rate-input"
+                                        >Click zoom rate:</label
+                                    >
+                                </td>
+                                <td>
+                                    <input
+                                        type="range"
+                                        id="zoom-rate-input"
+                                        min="-3"
+                                        max="5"
+                                        step="any"
+                                        value="1"
+                                    />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <label for="scroll-zoom-rate-input"
+                                        >Scroll zoom rate:</label
+                                    >
+                                </td>
+                                <td>
+                                    <input
+                                        type="range"
+                                        id="scroll-zoom-rate-input"
+                                        min="-3"
+                                        max="5"
+                                        step="any"
+                                        value="1"
+                                    />
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div>
+                            <label for="click-zoom-toggle"
+                                >Click to Zoom:</label
+                            >
+                            <input type="checkbox" id="click-zoom-toggle" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="find-image-input">Search for image:</label>
+                        <input
+                            type="file"
+                            id="find-image-input"
+                            accept="image/*"
+                        />
+                        <div id="find-image-drop-zone" class="drop-zone">
+                            Drop image
+                        </div>
+                    </div>
+
+                    <div>
+                        <div>
+                            <label for="file-input"
+                                >Load position from file:</label
+                            >
+                            <input type="file" id="file-input" />
+                        </div>
+                        <button id="set-position">Set Position</button>
+                    </div>
+                    <div><button id="save-offset">Save Position</button></div>
+                </div>
+            </div>
+        </main>
+        <script src="script.js"></script>
+    </body>
+
+    <!-- <style>
+        :root {
+            --hovering: 0px;
+        }
+
+        :root:hover {
+            --hovering: 1px;
+        }
+
+        #hover-detector {
+            width: var(--hovering);
+
+            color: hsl(
+                calc(var(--hovering) * 120),
+                100%,
+                50%
+            ); /* Green on hover, red otherwise */
+        }
+    </style>
+
+    <div id="hover-detector"></div>
+
+    <script>
+        const hoverDetector = document.getElementById("hover-detector");
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                const { width, height } = entry.contentRect;
+
+                if (width === 1) {
+                    console.log("Mouse is in window.");
+                } else {
+                    console.log("Mouse is not in window.");
+                }
+            }
+        });
+
+        // Start observing the size changes of the element
+        resizeObserver.observe(hoverDetector);
+    </script> -->
+</html>
