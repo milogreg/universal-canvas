@@ -139,6 +139,8 @@ async function renderImage(
 
     // ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    const startTime = performance.now();
+
     ctx.drawImage(
         offscreenCanvas,
         0,
@@ -162,6 +164,13 @@ async function renderImage(
         canvas.width * oldZoom,
         canvas.height * oldZoom
     );
+
+    const endTime = performance.now();
+    const executionTime = endTime - startTime;
+
+    if (executionTime > 3) {
+        console.log(`drawImage execution time: ${executionTime} milliseconds`);
+    }
 
     ctx.restore();
 }
@@ -484,71 +493,35 @@ async function zoomOnMouseHold() {
                     pressedKeys["ArrowRight"];
 
                 scrolls.forEach(async (scroll) => {
-                    await new Promise((resolve) => {
-                        const handleWorkerMessage = (e) => {
-                            if (e.data.type === "zoomViewportComplete") {
-                                worker.removeEventListener(
-                                    "message",
-                                    handleWorkerMessage
-                                );
-                                resolve();
-                            }
-                        };
-                        worker.addEventListener("message", handleWorkerMessage);
-                        worker.postMessage({
-                            type: "zoomViewport",
-                            mouseX: scroll.mouseX,
-                            mouseY: scroll.mouseY,
-                            zoomDelta:
-                                scroll.deltaY > 0
-                                    ? 1 / scrollZoomFactor
-                                    : scrollZoomFactor,
-                        });
+                    worker.postMessage({
+                        type: "zoomViewport",
+                        mouseX: scroll.mouseX,
+                        mouseY: scroll.mouseY,
+                        zoomDelta:
+                            scroll.deltaY > 0
+                                ? 1 / scrollZoomFactor
+                                : scrollZoomFactor,
                     });
                 });
 
                 scrolls.length = 0;
 
                 drags.forEach(async (drag) => {
-                    await new Promise((resolve) => {
-                        const handleWorkerMessage = (e) => {
-                            if (e.data.type === "moveViewportComplete") {
-                                worker.removeEventListener(
-                                    "message",
-                                    handleWorkerMessage
-                                );
-                                resolve();
-                            }
-                        };
-                        worker.addEventListener("message", handleWorkerMessage);
-                        worker.postMessage({
-                            type: "moveViewport",
-                            offsetX: drag.offsetX,
-                            offsetY: drag.offsetY,
-                        });
+                    worker.postMessage({
+                        type: "moveViewport",
+                        offsetX: drag.offsetX,
+                        offsetY: drag.offsetY,
                     });
                 });
 
                 drags.length = 0;
 
                 if (isMouseDown && clickZoomEnabled) {
-                    await new Promise((resolve) => {
-                        const handleWorkerMessage = (e) => {
-                            if (e.data.type === "zoomViewportComplete") {
-                                worker.removeEventListener(
-                                    "message",
-                                    handleWorkerMessage
-                                );
-                                resolve();
-                            }
-                        };
-                        worker.addEventListener("message", handleWorkerMessage);
-                        worker.postMessage({
-                            type: "zoomViewport",
-                            mouseX: mouseX,
-                            mouseY: mouseY,
-                            zoomDelta: zoomFactor,
-                        });
+                    worker.postMessage({
+                        type: "zoomViewport",
+                        mouseX: mouseX,
+                        mouseY: mouseY,
+                        zoomDelta: zoomFactor,
                     });
                 }
 
@@ -574,22 +547,10 @@ async function zoomOnMouseHold() {
                         offsetX += canvas.width * deltaTime;
                     }
 
-                    await new Promise((resolve) => {
-                        const handleWorkerMessage = (e) => {
-                            if (e.data.type === "moveViewportComplete") {
-                                worker.removeEventListener(
-                                    "message",
-                                    handleWorkerMessage
-                                );
-                                resolve();
-                            }
-                        };
-                        worker.addEventListener("message", handleWorkerMessage);
-                        worker.postMessage({
-                            type: "moveViewport",
-                            offsetX,
-                            offsetY,
-                        });
+                    worker.postMessage({
+                        type: "moveViewport",
+                        offsetX,
+                        offsetY,
                     });
                 }
             }
@@ -598,20 +559,8 @@ async function zoomOnMouseHold() {
             imageDirty = true;
 
             if (imageDirty || loading) {
-                await new Promise((resolve) => {
-                    const handleWorkerMessage = (e) => {
-                        if (e.data.type === "renderImage") {
-                            worker.removeEventListener(
-                                "message",
-                                handleWorkerMessage
-                            );
-                            resolve();
-                        }
-                    };
-                    worker.addEventListener("message", handleWorkerMessage);
-                    worker.postMessage({
-                        type: "renderImage",
-                    });
+                worker.postMessage({
+                    type: "renderImage",
                 });
             }
         }
