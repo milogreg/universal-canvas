@@ -3,17 +3,24 @@ const render = @import("render.zig");
 
 const js = struct {
     extern fn printString(ptr: [*]const u8, len: usize) void;
+
     extern fn getTime() f64;
-    extern fn renderImage(
+
+    extern fn fillImageBitmap(
         pixels: [*]render.Color,
         width: usize,
         height: usize,
-        offset_x: f64,
-        offset_y: f64,
-        zoom: f64,
         old_pixels: [*]render.Color,
         old_width: usize,
         old_height: usize,
+    ) void;
+
+    extern fn imageBitmapFilled() bool;
+
+    extern fn renderImage(
+        offset_x: f64,
+        offset_y: f64,
+        zoom: f64,
         old_offset_x: f64,
         old_offset_y: f64,
         old_zoom: f64,
@@ -99,7 +106,7 @@ var iteration_states: [4]?render.FillIterationState = @splat(null);
 const max_square_size = 2048;
 
 // const iteration_rate = 1000000;
-const iteration_rate = 1000;
+const iteration_rate = 300;
 
 var state_iteration_count: usize = 0;
 var iteration_done: bool = false;
@@ -781,51 +788,20 @@ var wait_until_backup = true;
 var has_max_detail = false;
 
 export fn renderPixels() void {
-    defer {
-        updated_pixels = false;
-    }
-
-    if (wait_until_backup or !updated_pixels) {
-        js.renderImage(
-            display_pixels.ptr,
-            display_square_size,
-            display_square_size,
-            display_client.offset_x,
-            display_client.offset_y,
-            display_client.zoom,
-
-            old_display_pixels.ptr,
-            old_display_square_size,
-            old_display_square_size,
-            old_display_client.offset_x,
-            old_display_client.offset_y,
-            old_display_client.zoom,
-
-            false,
-            has_max_detail,
-        );
-
-        return;
-    }
-
     js.renderImage(
-        display_pixels.ptr,
-        display_square_size,
-        display_square_size,
         display_client.offset_x,
         display_client.offset_y,
         display_client.zoom,
 
-        old_display_pixels.ptr,
-        old_display_square_size,
-        old_display_square_size,
         old_display_client.offset_x,
         old_display_client.offset_y,
         old_display_client.zoom,
 
-        updated_pixels,
+        updated_pixels and !wait_until_backup,
         has_max_detail,
     );
+
+    updated_pixels = false;
 }
 
 export fn zoomViewport(canvas_width: usize, canvas_height: usize, mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
@@ -1074,12 +1050,14 @@ const WorkCycleState = struct {
         update_old_display: bool,
         display_pixels_copy_state: MemcpyIterationState(render.Color),
         old_display_pixels_copy_state: MemcpyIterationState(render.Color),
+        started_filling_bitmap: bool,
 
         pub const init: RefreshDisplay = .{
             .initialized = false,
             .update_old_display = undefined,
             .display_pixels_copy_state = undefined,
             .old_display_pixels_copy_state = undefined,
+            .started_filling_bitmap = false,
         };
 
         pub fn canIterate(this: RefreshDisplay) bool {
@@ -1132,6 +1110,7 @@ const WorkCycleState = struct {
 
         fn deinitialize(this: *RefreshDisplay) void {
             this.initialized = false;
+            this.started_filling_bitmap = false;
 
             display_square_size = parent_square_size;
 
@@ -1183,6 +1162,32 @@ const WorkCycleState = struct {
                     return true;
                 }
             }
+            if (!this.started_filling_bitmap) {
+                if (this.update_old_display) {
+                    js.fillImageBitmap(
+                        display_pixels.ptr,
+                        parent_square_size,
+                        parent_square_size,
+                        old_display_pixels.ptr,
+                        parent_square_size,
+                        parent_square_size,
+                    );
+                } else {
+                    js.fillImageBitmap(
+                        display_pixels.ptr,
+                        parent_square_size,
+                        parent_square_size,
+                        old_display_pixels.ptr,
+                        old_display_square_size,
+                        old_display_square_size,
+                    );
+                }
+                this.started_filling_bitmap = true;
+            }
+
+            if (!js.imageBitmapFilled()) {
+                return true;
+            }
 
             this.deinitialize();
 
@@ -1190,7 +1195,6 @@ const WorkCycleState = struct {
         }
     };
 
-    // Return value is meaningless right now.
     pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
         if (parent_square_size < 2) {
             parent_square_size = 2;
@@ -1219,7 +1223,7 @@ const WorkCycleState = struct {
             }
         }
 
-        return true;
+        return false;
     }
 };
 

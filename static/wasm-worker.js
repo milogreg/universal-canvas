@@ -2,56 +2,22 @@ let memory;
 
 let exports;
 
-let pixelData = new Uint8ClampedArray(0);
+let dataBitmap;
+let oldDataBitmap;
 
-let oldPixelData = new Uint8ClampedArray(0);
+let pollingBitmap = false;
 
 const env = {
-    renderImage: (
+    fillImageBitmap: (
         dataPtr,
         width,
         height,
-        offsetX,
-        offsetY,
-        zoom,
-
         oldDataPtr,
         oldWidth,
-        oldHeight,
-        oldOffsetX,
-        oldOffsetY,
-        oldZoom,
-
-        updatedPixels,
-        maxDetail
+        oldHeight
     ) => {
-        // if (width == 0) {
-        //     throw new Error("Invalid width");
-        // }
-        if (!updatedPixels) {
-            self.postMessage({
-                type: "renderImage",
-                data: null,
-                width,
-                height,
-                offsetX,
-                offsetY,
-                zoom,
-
-                oldData: null,
-                oldWidth,
-                oldHeight,
-                oldOffsetX,
-                oldOffsetY,
-                oldZoom,
-
-                maxDetail,
-            });
-
-            return;
-        }
-
-        const startTime = performance.now();
+        dataBitmap = undefined;
+        oldDataBitmap = undefined;
 
         const data = new Uint8ClampedArray(
             memory.buffer,
@@ -69,39 +35,78 @@ const env = {
 
         const oldImageData = new ImageData(oldData, oldWidth, oldHeight);
 
-        (async () => {
-            const [dataBitmap, oldDataBitmap] = await Promise.all([
+        pollingBitmap = true;
+        setTimeout(async () => {
+            const startTime = performance.now();
+
+            [dataBitmap, oldDataBitmap] = await Promise.all([
                 createImageBitmap(imageData),
                 createImageBitmap(oldImageData),
             ]);
+
+            pollingBitmap = false;
 
             const endTime = performance.now();
             const executionTime = endTime - startTime;
 
             // console.log(`Execution time: ${executionTime} milliseconds`);
+        }, 0);
+    },
 
-            self.postMessage(
-                {
-                    type: "renderImage",
-                    data: dataBitmap,
-                    width,
-                    height,
-                    offsetX,
-                    offsetY,
-                    zoom,
+    imageBitmapFilled: () => {
+        return !!dataBitmap && !!oldDataBitmap;
+    },
 
-                    oldData: oldDataBitmap,
-                    oldWidth,
-                    oldHeight,
-                    oldOffsetX,
-                    oldOffsetY,
-                    oldZoom,
+    renderImage: (
+        offsetX,
+        offsetY,
+        zoom,
 
-                    maxDetail,
-                },
-                [dataBitmap, oldDataBitmap]
-            );
-        })();
+        oldOffsetX,
+        oldOffsetY,
+        oldZoom,
+
+        updatedPixels,
+        maxDetail
+    ) => {
+        if (!updatedPixels) {
+            self.postMessage({
+                type: "renderImage",
+
+                data: null,
+                offsetX,
+                offsetY,
+                zoom,
+
+                oldData: null,
+                oldOffsetX,
+                oldOffsetY,
+                oldZoom,
+
+                maxDetail,
+            });
+
+            return;
+        }
+
+        self.postMessage(
+            {
+                type: "renderImage",
+
+                data: dataBitmap,
+                offsetX,
+                offsetY,
+                zoom,
+
+                oldData: oldDataBitmap,
+                oldOffsetX,
+                oldOffsetY,
+                oldZoom,
+
+                maxDetail,
+            },
+            [dataBitmap, oldDataBitmap]
+        );
     },
     printString: (ptr, len) => {
         // Create a DataView or Uint8Array to access the memory buffer
@@ -245,10 +250,12 @@ self.onmessage = async function (e) {
 const channel = new MessageChannel();
 channel.port1.onmessage = workCycleLoop;
 
-function workCycleLoop() {
+let workCycleSleepTime = 1;
+async function workCycleLoop() {
+    let backoff = true;
     if (exports) {
         const startTime = performance.now();
-        const res = exports.workCycle();
+        backoff = !exports.workCycle() || pollingBitmap;
         const endTime = performance.now();
         const executionTime = endTime - startTime;
         if (executionTime > 3) {
@@ -258,5 +265,14 @@ function workCycleLoop() {
         }
     }
 
-    channel.port2.postMessage("");
+    if (backoff) {
+        // console.log(`sleeping ${workCycleSleepTime} ms...`);
+
+        const prevWorkCycleSleepTime = workCycleSleepTime;
+        workCycleSleepTime = Math.min(workCycleSleepTime * 2, 100);
+        setTimeout(workCycleLoop, prevWorkCycleSleepTime);
+    } else {
+        workCycleSleepTime = 1;
+        channel.port2.postMessage("");
+    }
 }

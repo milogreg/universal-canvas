@@ -91,29 +91,36 @@ let renderCache;
 
 function renderImageFromCache() {
     if (renderCache) {
-        const { width, height, offsetX, offsetY, zoom } = renderCache;
-        renderImage(null, width, height, offsetX, offsetY, zoom);
+        const { offsetX, offsetY, zoom, oldOffsetX, oldOffsetY, oldZoom } =
+            renderCache;
+        renderImage(
+            null,
+            offsetX,
+            offsetY,
+            zoom,
+            null,
+            oldOffsetX,
+            oldOffsetY,
+            oldZoom,
+            false
+        );
     }
 }
 
 async function renderImage(
     data,
-    width,
-    height,
     offsetX,
     offsetY,
     zoom,
 
     oldData,
-    oldWidth,
-    oldHeight,
     oldOffsetX,
     oldOffsetY,
     oldZoom,
 
     maxDetail
 ) {
-    if ((!data && !renderCache) || width == 0) {
+    if ((!data && !renderCache) || (data && data.width === 0)) {
         return;
     }
 
@@ -125,24 +132,20 @@ async function renderImage(
     imageDirty = !maxDetail;
 
     if (data) {
-        offscreenCanvas.width = width;
-        offscreenCanvas.height = height;
+        offscreenCanvas.width = data.width;
+        offscreenCanvas.height = data.height;
         offscreenCtx.transferFromImageBitmap(data);
 
-        oldOffscreenCanvas.width = oldWidth;
-        oldOffscreenCanvas.height = oldHeight;
+        oldOffscreenCanvas.width = oldData.width;
+        oldOffscreenCanvas.height = oldData.height;
         oldOffscreenCtx.transferFromImageBitmap(oldData);
     }
 
     renderCache = {
-        width,
-        height,
         offsetX,
         offsetY,
         zoom,
 
-        oldWidth,
-        oldHeight,
         oldOffsetX,
         oldOffsetY,
         oldZoom,
@@ -166,8 +169,8 @@ async function renderImage(
         offscreenCanvas,
         0,
         0,
-        width,
-        height,
+        offscreenCanvas.width,
+        offscreenCanvas.height,
         offsetX,
         offsetY,
         canvas.width * zoom,
@@ -178,8 +181,8 @@ async function renderImage(
         oldOffscreenCanvas,
         0,
         0,
-        oldWidth,
-        oldHeight,
+        oldOffscreenCanvas.width,
+        oldOffscreenCanvas.height,
         oldOffsetX,
         oldOffsetY,
         canvas.width * oldZoom,
@@ -267,15 +270,11 @@ worker.onmessage = async function (e) {
         fileUrl,
 
         data,
-        width,
-        height,
         offsetX,
         offsetY,
         zoom,
 
         oldData,
-        oldWidth,
-        oldHeight,
         oldOffsetX,
         oldOffsetY,
         oldZoom,
@@ -324,15 +323,11 @@ worker.onmessage = async function (e) {
             {
                 renderImage(
                     data,
-                    width,
-                    height,
                     offsetX,
                     offsetY,
                     zoom,
 
                     oldData,
-                    oldWidth,
-                    oldHeight,
                     oldOffsetX,
                     oldOffsetY,
                     oldZoom,
@@ -631,8 +626,10 @@ async function zoomOnMouseHold() {
                 }
             }
 
+            // TODO calculate imageDirty properly so it doesn't need to be forced to true
+            imageDirty = true;
+
             if (imageDirty || loading) {
-                // imageDirty = false;
                 await new Promise((resolve) => {
                     const handleWorkerMessage = (e) => {
                         if (e.data.type === "renderImage") {
