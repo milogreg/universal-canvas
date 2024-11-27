@@ -53,79 +53,55 @@ const env = {
 
         const startTime = performance.now();
 
-        if (pixelData.byteLength < width * height * 4) {
-            pixelData = new Uint8ClampedArray(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    dataPtr,
-                    width * height * 4
-                )
-            );
-        } else {
-            pixelData.set(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    dataPtr,
-                    width * height * 4
-                )
-            );
-        }
-
         const data = new Uint8ClampedArray(
-            pixelData.buffer,
-            0,
+            memory.buffer,
+            dataPtr,
             width * height * 4
         );
 
-        if (oldPixelData.byteLength < oldWidth * oldHeight * 4) {
-            oldPixelData = new Uint8ClampedArray(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    oldDataPtr,
-                    oldWidth * oldHeight * 4
-                )
-            );
-        } else {
-            oldPixelData.set(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    oldDataPtr,
-                    oldWidth * oldHeight * 4
-                )
-            );
-        }
-
         const oldData = new Uint8ClampedArray(
-            new Uint8ClampedArray(
-                memory.buffer,
-                oldDataPtr,
-                oldWidth * oldHeight * 4
-            )
+            memory.buffer,
+            oldDataPtr,
+            oldWidth * oldHeight * 4
         );
 
-        const endTime = performance.now();
-        const executionTime = endTime - startTime;
+        const imageData = new ImageData(data, width, height);
 
-        console.log(`Execution time: ${executionTime} milliseconds`);
+        const oldImageData = new ImageData(oldData, oldWidth, oldHeight);
 
-        self.postMessage({
-            type: "renderImage",
-            data,
-            width,
-            height,
-            offsetX,
-            offsetY,
-            zoom,
+        (async () => {
+            const [dataBitmap, oldDataBitmap] = await Promise.all([
+                createImageBitmap(imageData),
+                createImageBitmap(oldImageData),
+            ]);
 
-            oldData,
-            oldWidth,
-            oldHeight,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom,
+            const endTime = performance.now();
+            const executionTime = endTime - startTime;
 
-            maxDetail,
-        });
+            console.log(`Execution time: ${executionTime} milliseconds`);
+
+            self.postMessage(
+                {
+                    type: "renderImage",
+                    data: dataBitmap,
+                    width,
+                    height,
+                    offsetX,
+                    offsetY,
+                    zoom,
+
+                    oldData: oldDataBitmap,
+                    oldWidth,
+                    oldHeight,
+                    oldOffsetX,
+                    oldOffsetY,
+                    oldZoom,
+
+                    maxDetail,
+                },
+                [dataBitmap, oldDataBitmap]
+            );
+        })();
     },
     printString: (ptr, len) => {
         // Create a DataView or Uint8Array to access the memory buffer

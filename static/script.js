@@ -75,11 +75,15 @@ let loading = false;
 // Create an off-screen canvas to hold the ImageData
 const offscreenCanvas = document.createElement("canvas");
 
-const offscreenCtx = offscreenCanvas.getContext("2d", { alpha: false });
+const offscreenCtx = offscreenCanvas.getContext("bitmaprenderer", {
+    alpha: false,
+});
 
 const oldOffscreenCanvas = document.createElement("canvas");
 
-const oldOffscreenCtx = oldOffscreenCanvas.getContext("2d", { alpha: false });
+const oldOffscreenCtx = oldOffscreenCanvas.getContext("bitmaprenderer", {
+    alpha: false,
+});
 
 let imageDirty = true;
 
@@ -121,19 +125,13 @@ async function renderImage(
     imageDirty = !maxDetail;
 
     if (data) {
-        const imageData = new ImageData(data, width, height);
-
         offscreenCanvas.width = width;
-
         offscreenCanvas.height = height;
-        offscreenCtx.putImageData(imageData, 0, 0);
-
-        const oldImageData = new ImageData(oldData, oldWidth, oldHeight);
+        offscreenCtx.transferFromImageBitmap(data);
 
         oldOffscreenCanvas.width = oldWidth;
-
         oldOffscreenCanvas.height = oldHeight;
-        oldOffscreenCtx.putImageData(oldImageData, 0, 0);
+        oldOffscreenCtx.transferFromImageBitmap(oldData);
     }
 
     renderCache = {
