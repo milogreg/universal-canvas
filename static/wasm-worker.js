@@ -25,9 +25,9 @@ const env = {
         updatedPixels,
         maxDetail
     ) => {
-        if (width == 0) {
-            throw new Error("Invalid width");
-        }
+        // if (width == 0) {
+        //     throw new Error("Invalid width");
+        // }
         if (!updatedPixels) {
             self.postMessage({
                 type: "renderImage",

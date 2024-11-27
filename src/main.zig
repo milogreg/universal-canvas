@@ -321,7 +321,6 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
             position_dirty = false;
             updated_position = true;
         }
-        updated_pixels = true;
     }
 
     iteration_done = all_iterations_done;
@@ -764,7 +763,11 @@ var wait_until_backup = true;
 var has_max_detail = false;
 
 export fn renderPixels() void {
-    if (wait_until_backup) {
+    defer {
+        updated_pixels = false;
+    }
+
+    if (wait_until_backup or !updated_pixels) {
         js.renderImage(
             display_pixels.ptr,
             display_square_size,
@@ -783,6 +786,8 @@ export fn renderPixels() void {
             false,
             has_max_detail,
         );
+
+        return;
     }
 
     js.renderImage(
@@ -803,9 +808,6 @@ export fn renderPixels() void {
         updated_pixels,
         has_max_detail,
     );
-    updated_pixels = false;
-
-    return;
 }
 
 export fn zoomViewport(canvas_width: usize, canvas_height: usize, mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
@@ -869,7 +871,7 @@ const WorkCycleState = struct {
     pub const init: WorkCycleState = .{
         .update_position = .{},
         .fill_pixels = .{},
-        .refresh_display = .{},
+        .refresh_display = .init,
     };
 
     const UpdatePosition = struct {
@@ -879,13 +881,6 @@ const WorkCycleState = struct {
         }
 
         pub fn iterate(this: *UpdatePosition, iteration_amount: usize) bool {
-            if (parent_square_size < 2) {
-                parent_square_size = 2;
-                state_iteration_count = 0;
-
-                return true;
-            }
-
             _ = this; // autofix
             _ = iteration_amount; // autofix
             const at_min_edge_y = quadrant_offset_digits[0].array.isMinY();
@@ -1057,48 +1052,68 @@ const WorkCycleState = struct {
     };
 
     const RefreshDisplay = struct {
+        initialized: bool,
+        update_old_display: bool,
+        display_pixels_copy_state: MemcpyIterationState(render.Color),
+        old_display_pixels_copy_state: MemcpyIterationState(render.Color),
+
+        pub const init: RefreshDisplay = .{
+            .initialized = false,
+            .update_old_display = undefined,
+            .display_pixels_copy_state = undefined,
+            .old_display_pixels_copy_state = undefined,
+        };
+
         pub fn canIterate(this: RefreshDisplay) bool {
             _ = this; // autofix
-            return display_square_size != parent_square_size or updated_position or parent_square_size == 2;
+
+            return (display_square_size != parent_square_size or updated_position or parent_square_size == 2) and iteration_done and !updated_pixels;
         }
 
-        pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
-            _ = this; // autofix
-            _ = iteration_amount; // autofix
-            // if ((display_square_size != parent_square_size or updated_position or parent_square_size == 2) and iteration_done) {
+        fn initialize(this: *RefreshDisplay) void {
+            this.initialized = true;
+
             if (display_pixels.len != parent_pixels.len) {
                 if (display_pixels.len != 0) {
                     allocator.free(display_pixels);
                 }
                 display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
             }
+            this.display_pixels_copy_state = MemcpyIterationState(render.Color).init(display_pixels, parent_pixels);
+
+            const adjusted_old_display_square_size = @as(f64, @floatFromInt(old_display_square_size)) / old_display_client.zoom;
+            const adjusted_display_square_size = @as(f64, @floatFromInt(parent_square_size)) / backup_client.zoom;
+
+            const area_ratio = old_display_client.areaInViewportRatio();
+
+            this.update_old_display = wait_until_backup or
+                old_display_pixels.len == 0 or
+                @as(f64, @floatFromInt(parent_square_size)) >= @min(@as(f64, @floatFromInt(old_display_square_size)), (@as(f64, @floatFromInt(old_display_square_size)) * old_display_client.zoom * 2)) or
+                area_ratio == 0 or
+                adjusted_old_display_square_size < adjusted_display_square_size;
+
+            if (this.update_old_display) {
+                if (old_display_pixels.len != 0) {
+                    allocator.free(old_display_pixels);
+                }
+                old_display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+
+                this.old_display_pixels_copy_state = MemcpyIterationState(render.Color).init(old_display_pixels, parent_pixels);
+            }
+        }
+
+        fn deinitialize(this: *RefreshDisplay) void {
+            this.initialized = false;
+
+            display_square_size = parent_square_size;
 
             updated_position = false;
 
             display_client = backup_client;
 
-            display_square_size = parent_square_size;
-            @memcpy(display_pixels, parent_pixels);
-
-            const adjusted_old_display_square_size = @as(f64, @floatFromInt(old_display_square_size)) / old_display_client.zoom;
-            const adjusted_display_square_size = @as(f64, @floatFromInt(display_square_size)) / display_client.zoom;
-
-            const area_ratio = old_display_client.areaInViewportRatio();
-
-            if (wait_until_backup or
-                old_display_pixels.len == 0 or
-                @as(f64, @floatFromInt(display_square_size)) >= @min(@as(f64, @floatFromInt(old_display_square_size)), (@as(f64, @floatFromInt(old_display_square_size)) * old_display_client.zoom * 2)) or
-                area_ratio == 0 or
-                adjusted_old_display_square_size < adjusted_display_square_size)
-            {
-                old_display_client = display_client;
-
-                if (old_display_pixels.len != 0) {
-                    allocator.free(old_display_pixels);
-                }
-                old_display_pixels = allocator.alloc(render.Color, display_pixels.len) catch @panic("OOM");
-                old_display_square_size = display_square_size;
-                @memcpy(old_display_pixels, display_pixels);
+            if (this.update_old_display) {
+                old_display_square_size = parent_square_size;
+                old_display_client = backup_client;
             }
 
             wait_until_backup = false;
@@ -1107,7 +1122,41 @@ const WorkCycleState = struct {
                 parent_square_size *= 2;
                 state_iteration_count = 0;
             }
-            // }
+
+            state_iteration_count = 0;
+
+            updated_pixels = true;
+        }
+
+        pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
+            std.debug.assert(!updated_pixels);
+
+            if (!this.initialized) {
+                this.initialize();
+
+                return true;
+            }
+
+            const start_time = js.getTime();
+            defer {
+                const end_time = js.getTime();
+
+                if (end_time - start_time > 1) {
+                    jsPrint("refresh_display time: {d} ms", .{end_time - start_time});
+                }
+            }
+
+            if (this.display_pixels_copy_state.iterate(iteration_amount)) {
+                return true;
+            }
+
+            if (this.update_old_display) {
+                if (this.old_display_pixels_copy_state.iterate(iteration_amount)) {
+                    return true;
+                }
+            }
+
+            this.deinitialize();
 
             return false;
         }
@@ -1115,23 +1164,75 @@ const WorkCycleState = struct {
 
     // Return value is meaningless right now.
     pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
-        if (this.update_position.canIterate()) {
-            _ = this.update_position.iterate(iteration_amount);
+        if (parent_square_size < 2) {
+            parent_square_size = 2;
+            state_iteration_count = 0;
+
+            return true;
+        }
+
+        if (this.refresh_display.canIterate()) {
+            if (this.refresh_display.iterate(iteration_amount)) {
+                return true;
+            }
         }
 
         has_max_detail = iteration_done and state_iteration_count != 0 and display_square_size == max_square_size;
 
+        if (this.update_position.canIterate()) {
+            if (this.update_position.iterate(iteration_amount)) {
+                return true;
+            }
+        }
+
         if (this.fill_pixels.canIterate()) {
-            if (!this.fill_pixels.iterate(iteration_amount)) {
-                if (this.refresh_display.canIterate()) {
-                    _ = this.refresh_display.iterate(iteration_amount);
-                }
+            if (this.fill_pixels.iterate(iteration_amount)) {
+                return true;
             }
         }
 
         return true;
     }
 };
+
+fn MemcpyIterationState(comptime T: type) type {
+    return struct {
+        dst: []T,
+        src: []T,
+        idx: usize,
+
+        const Self = @This();
+
+        pub fn init(noalias dst: []T, noalias src: []T) Self {
+            return .{
+                .dst = dst,
+                .src = src,
+                .idx = 0,
+            };
+        }
+
+        pub fn iterate(this: *Self, iteration_amount_arg: usize) bool {
+            const iteration_amount = iteration_amount_arg * 100;
+
+            const copies_left = this.dst.len - this.idx;
+
+            if (copies_left <= iteration_amount) {
+                if (copies_left > 0) {
+                    @memcpy(this.dst[this.idx .. this.idx + copies_left], this.src[this.idx .. this.idx + copies_left]);
+                    this.idx += copies_left;
+                }
+
+                return false;
+            }
+
+            @memcpy(this.dst[this.idx .. this.idx + iteration_amount], this.src[this.idx .. this.idx + iteration_amount]);
+
+            this.idx += iteration_amount;
+
+            return true;
+        }
+    };
+}
 
 var work_cycle_state = WorkCycleState.init;
 

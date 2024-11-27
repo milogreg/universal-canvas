@@ -109,7 +109,7 @@ async function renderImage(
 
     maxDetail
 ) {
-    if (!data && !renderCache) {
+    if ((!data && !renderCache) || width == 0) {
         return;
     }
 
