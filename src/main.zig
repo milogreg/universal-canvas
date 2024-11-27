@@ -111,12 +111,15 @@ const root_color: render.Color = .{
     .a = 255,
 };
 
+var parent_pixels_buf: []render.Color = &.{};
 var parent_pixels: []render.Color = &.{};
 var parent_square_size: usize = 0;
 
+var display_pixels_buf: []render.Color = &.{};
 var display_pixels: []render.Color = &.{};
 var display_square_size: usize = 0;
 
+var old_display_pixels_buf: []render.Color = &.{};
 var old_display_pixels: []render.Color = &.{};
 var old_display_square_size: usize = 0;
 
@@ -160,10 +163,15 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
     iteration_done = false;
 
     if (parent_pixels.len > 0 and parent_pixels.len != target_square_size * target_square_size) {
-        allocator.free(parent_pixels);
-        parent_pixels = allocator.alloc(render.Color, target_square_size * target_square_size) catch @panic("OOM");
+        if (parent_pixels_buf.len < target_square_size * target_square_size) {
+            parent_pixels_buf = allocator.realloc(parent_pixels_buf, target_square_size * target_square_size) catch @panic("OOM");
+        }
+
+        parent_pixels = parent_pixels_buf[0 .. target_square_size * target_square_size];
     } else if (parent_pixels.len == 0) {
-        parent_pixels = allocator.alloc(render.Color, target_square_size * target_square_size) catch @panic("OOM");
+        parent_pixels_buf = allocator.alloc(render.Color, target_square_size * target_square_size) catch @panic("OOM");
+
+        parent_pixels = parent_pixels_buf[0 .. target_square_size * target_square_size];
     }
 
     var output_color_chunks: [4][][]render.Color = undefined;
@@ -205,7 +213,7 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
 
                 const end_time = js.getTime();
 
-                if (end_time - start_time > 3) {
+                if (end_time - start_time > 2) {
                     jsPrint("traverseFromRoot time: {d} ms", .{end_time - start_time});
                 }
 
@@ -225,6 +233,16 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
                     color_chunks,
                 ) catch @panic("OOM");
             } else {
+                const start_time = js.getTime();
+
+                defer {
+                    const end_time = js.getTime();
+
+                    if (end_time - start_time > 2) {
+                        jsPrint("iteration_states reset time: {d} ms", .{end_time - start_time});
+                    }
+                }
+
                 iteration_states[i].?.reset(
                     sub_square_size,
                     quadrant_offset_digits[i].array,
@@ -287,7 +305,7 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
 
         const end_time = js.getTime();
 
-        if (end_time - start_time > 3) {
+        if (end_time - start_time > 2) {
             jsPrint("iteration_state iterate time: {d} ms", .{end_time - start_time});
         }
 
@@ -1074,10 +1092,15 @@ const WorkCycleState = struct {
             this.initialized = true;
 
             if (display_pixels.len != parent_pixels.len) {
-                if (display_pixels.len != 0) {
-                    allocator.free(display_pixels);
+                if (display_pixels_buf.len < parent_pixels.len) {
+                    if (display_pixels_buf.len == 0) {
+                        display_pixels_buf = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+                    } else {
+                        display_pixels_buf = allocator.realloc(display_pixels_buf, parent_pixels.len) catch @panic("OOM");
+                    }
                 }
-                display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+
+                display_pixels = display_pixels_buf[0..parent_pixels.len];
             }
             this.display_pixels_copy_state = MemcpyIterationState(render.Color).init(display_pixels, parent_pixels);
 
@@ -1093,10 +1116,15 @@ const WorkCycleState = struct {
                 adjusted_old_display_square_size < adjusted_display_square_size;
 
             if (this.update_old_display) {
-                if (old_display_pixels.len != 0) {
-                    allocator.free(old_display_pixels);
+                if (old_display_pixels_buf.len < parent_pixels.len) {
+                    if (old_display_pixels_buf.len == 0) {
+                        old_display_pixels_buf = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+                    } else {
+                        old_display_pixels_buf = allocator.realloc(old_display_pixels_buf, parent_pixels.len) catch @panic("OOM");
+                    }
                 }
-                old_display_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+
+                old_display_pixels = old_display_pixels_buf[0..parent_pixels.len];
 
                 this.old_display_pixels_copy_state = MemcpyIterationState(render.Color).init(old_display_pixels, parent_pixels);
             }

@@ -78,7 +78,7 @@ const env = {
             const endTime = performance.now();
             const executionTime = endTime - startTime;
 
-            console.log(`Execution time: ${executionTime} milliseconds`);
+            // console.log(`Execution time: ${executionTime} milliseconds`);
 
             self.postMessage(
                 {
