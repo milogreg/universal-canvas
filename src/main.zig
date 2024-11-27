@@ -804,44 +804,28 @@ export fn renderPixels() void {
     updated_pixels = false;
 }
 
-export fn zoomViewport(canvas_width: usize, canvas_height: usize, mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
-    // if (wait_until_backup) {
-    //     return;
-    // }
-
-    std.debug.assert(canvas_width > 0 and canvas_height > 0);
-
-    old_display_client.updateDimensions(canvas_width, canvas_height);
+export fn zoomViewport(mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
     old_display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
 
-    display_client.updateDimensions(canvas_width, canvas_height);
     display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
 
-    backup_client.updateDimensions(canvas_width, canvas_height);
     backup_client.updatePosition(mouse_x, mouse_y, zoom_delta);
 }
 
-export fn moveViewport(canvas_width: usize, canvas_height: usize, offset_x: f64, offset_y: f64) void {
-    // if (wait_until_backup) {
-    //     return;
-    // }
+export fn moveViewport(offset_x: f64, offset_y: f64) void {
+    old_display_client.move(offset_x, offset_y);
 
+    display_client.move(offset_x, offset_y);
+
+    backup_client.move(offset_x, offset_y);
+}
+
+export fn resizeViewport(canvas_width: usize, canvas_height: usize) void {
     std.debug.assert(canvas_width > 0 and canvas_height > 0);
 
     old_display_client.updateDimensions(canvas_width, canvas_height);
-    old_display_client.move(offset_x, offset_y);
-
     display_client.updateDimensions(canvas_width, canvas_height);
-    display_client.move(offset_x, offset_y);
-
     backup_client.updateDimensions(canvas_width, canvas_height);
-    backup_client.move(offset_x, offset_y);
-
-    // if (offset_x != 0 and offset_y != 0) {
-    //     display_client.digitDecrement(3);
-    //     backup_client.digitDecrement(3);
-    //     old_display_client.digitDecrement(3);
-    // }
 }
 
 fn printDigits() void {

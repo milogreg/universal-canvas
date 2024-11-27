@@ -10,56 +10,30 @@ canvas.height = canvas.width;
 
 canvas.style.opacity = "0";
 
-let canvasClientWidth = canvas.width;
-let canvasClientHeight = canvas.height;
-
 // Create an observer to track changes in the canvas's client width and height
 const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
         const { clientWidth, clientHeight } = entry.target;
 
-        canvasClientWidth = clientWidth;
-        canvasClientHeight = clientHeight;
+        canvas.width = clientWidth;
+        canvas.height = clientHeight;
 
-        setCanvasSizeToClientSize();
+        renderImageFromCache();
+
+        imageDirty = true;
+
+        if (workerInitialized) {
+            worker.postMessage({
+                type: "resizeViewport",
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height,
+            });
+        }
     }
 });
 
-const setCanvasSizeToClientSize = async () => {
-    canvas.width = canvasClientWidth;
-    canvas.height = canvasClientHeight;
-
-    renderImageFromCache();
-
-    imageDirty = true;
-
-    if (workerInitialized) {
-        await new Promise((resolve) => {
-            const handleWorkerMessage = (e) => {
-                if (e.data.type === "zoomViewportComplete") {
-                    worker.removeEventListener("message", handleWorkerMessage);
-                    resolve();
-                }
-            };
-            worker.addEventListener("message", handleWorkerMessage);
-            worker.postMessage({
-                type: "zoomViewport",
-                canvasWidth: canvas.width,
-                canvasHeight: canvas.height,
-                mouseX: 0,
-                mouseY: 0,
-                zoomDelta: 1,
-            });
-        });
-    }
-};
-
 // Observe the canvas element
 observer.observe(canvas);
-
-// Store the initial position for dragging
-let isDragging = false;
-let dragStartX, dragStartY;
 
 const setPositionButton = document.getElementById("set-position");
 const saveOffsetButton = document.getElementById("save-offset");
@@ -285,7 +259,7 @@ worker.onmessage = async function (e) {
         case "initComplete": {
             await new Promise((resolve) => {
                 const handleWorkerMessage = (e) => {
-                    if (e.data.type === "moveViewportComplete") {
+                    if (e.data.type === "resizeViewportComplete") {
                         worker.removeEventListener(
                             "message",
                             handleWorkerMessage
@@ -295,11 +269,9 @@ worker.onmessage = async function (e) {
                 };
                 worker.addEventListener("message", handleWorkerMessage);
                 worker.postMessage({
-                    type: "moveViewport",
+                    type: "resizeViewport",
                     canvasWidth: canvas.width,
                     canvasHeight: canvas.height,
-                    offsetX: 0,
-                    offsetY: 0,
                 });
             });
 
@@ -344,6 +316,10 @@ worker.onmessage = async function (e) {
         }
 
         case "moveViewportComplete": {
+            break;
+        }
+
+        case "resizeViewportComplete": {
             break;
         }
 
@@ -521,8 +497,6 @@ async function zoomOnMouseHold() {
                         worker.addEventListener("message", handleWorkerMessage);
                         worker.postMessage({
                             type: "zoomViewport",
-                            canvasWidth: canvas.width,
-                            canvasHeight: canvas.height,
                             mouseX: scroll.mouseX,
                             mouseY: scroll.mouseY,
                             zoomDelta:
@@ -549,8 +523,6 @@ async function zoomOnMouseHold() {
                         worker.addEventListener("message", handleWorkerMessage);
                         worker.postMessage({
                             type: "moveViewport",
-                            canvasWidth: canvas.width,
-                            canvasHeight: canvas.height,
                             offsetX: drag.offsetX,
                             offsetY: drag.offsetY,
                         });
@@ -573,8 +545,6 @@ async function zoomOnMouseHold() {
                         worker.addEventListener("message", handleWorkerMessage);
                         worker.postMessage({
                             type: "zoomViewport",
-                            canvasWidth: canvas.width,
-                            canvasHeight: canvas.height,
                             mouseX: mouseX,
                             mouseY: mouseY,
                             zoomDelta: zoomFactor,
@@ -617,8 +587,6 @@ async function zoomOnMouseHold() {
                         worker.addEventListener("message", handleWorkerMessage);
                         worker.postMessage({
                             type: "moveViewport",
-                            canvasWidth: canvas.width,
-                            canvasHeight: canvas.height,
                             offsetX,
                             offsetY,
                         });

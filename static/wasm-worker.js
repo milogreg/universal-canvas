@@ -209,13 +209,7 @@ self.onmessage = async function (e) {
         }
 
         case "zoomViewport": {
-            exports.zoomViewport(
-                canvasWidth,
-                canvasHeight,
-                mouseX,
-                mouseY,
-                zoomDelta
-            );
+            exports.zoomViewport(mouseX, mouseY, zoomDelta);
 
             self.postMessage({ type: "zoomViewportComplete" });
 
@@ -223,9 +217,17 @@ self.onmessage = async function (e) {
         }
 
         case "moveViewport": {
-            exports.moveViewport(canvasWidth, canvasHeight, offsetX, offsetY);
+            exports.moveViewport(offsetX, offsetY);
 
             self.postMessage({ type: "moveViewportComplete" });
+
+            break;
+        }
+
+        case "resizeViewport": {
+            exports.resizeViewport(canvasWidth, canvasHeight);
+
+            self.postMessage({ type: "resizeViewportComplete" });
 
             break;
         }
