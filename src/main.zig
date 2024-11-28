@@ -1122,8 +1122,6 @@ const WorkCycleState = struct {
                 state_iteration_count = 0;
             }
 
-            state_iteration_count = 0;
-
             updated_pixels = true;
         }
 
