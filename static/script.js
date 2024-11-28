@@ -3,7 +3,9 @@
 // Set up the canvas
 const canvas = document.getElementById("main-canvas");
 
-const ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
+const ctx = canvas.getContext("2d", {
+    alpha: false,
+});
 
 canvas.width = 1024;
 canvas.height = canvas.width;
@@ -46,18 +48,8 @@ let workerInitialized = false;
 
 let loading = false;
 
-// Create an off-screen canvas to hold the ImageData
-const offscreenCanvas = document.createElement("canvas");
-
-const offscreenCtx = offscreenCanvas.getContext("bitmaprenderer", {
-    alpha: false,
-});
-
-const oldOffscreenCanvas = document.createElement("canvas");
-
-const oldOffscreenCtx = oldOffscreenCanvas.getContext("bitmaprenderer", {
-    alpha: false,
-});
+let dataBitmap;
+let oldDataBitmap;
 
 let imageDirty = true;
 
@@ -106,13 +98,16 @@ async function renderImage(
     imageDirty = !maxDetail;
 
     if (data) {
-        offscreenCanvas.width = data.width;
-        offscreenCanvas.height = data.height;
-        offscreenCtx.transferFromImageBitmap(data);
+        if (dataBitmap) {
+            dataBitmap.close();
+        }
 
-        oldOffscreenCanvas.width = oldData.width;
-        oldOffscreenCanvas.height = oldData.height;
-        oldOffscreenCtx.transferFromImageBitmap(oldData);
+        if (oldDataBitmap) {
+            oldDataBitmap.close();
+        }
+
+        dataBitmap = data;
+        oldDataBitmap = oldData;
     }
 
     renderCache = {
@@ -142,11 +137,11 @@ async function renderImage(
     const startTime = performance.now();
 
     ctx.drawImage(
-        offscreenCanvas,
+        dataBitmap,
         0,
         0,
-        offscreenCanvas.width,
-        offscreenCanvas.height,
+        dataBitmap.width,
+        dataBitmap.height,
         offsetX,
         offsetY,
         canvas.width * zoom,
@@ -154,11 +149,11 @@ async function renderImage(
     );
 
     ctx.drawImage(
-        oldOffscreenCanvas,
+        oldDataBitmap,
         0,
         0,
-        oldOffscreenCanvas.width,
-        oldOffscreenCanvas.height,
+        oldDataBitmap.width,
+        oldDataBitmap.height,
         oldOffsetX,
         oldOffsetY,
         canvas.width * oldZoom,
