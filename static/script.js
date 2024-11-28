@@ -22,6 +22,7 @@ const observer = new ResizeObserver((entries) => {
 
         renderImageFromCache();
 
+        upscaleDataBitmap();
         imageDirty = true;
 
         if (workerInitialized) {
@@ -108,7 +109,18 @@ async function renderImage(
 
         dataBitmap = data;
         oldDataBitmap = oldData;
+
+        upscaleDataBitmap();
     }
+
+    const imageChanged =
+        data ||
+        offsetX !== renderCache.offsetX ||
+        offsetY !== renderCache.offsetY ||
+        zoom !== renderCache.zoom ||
+        oldOffsetX !== renderCache.oldOffsetX ||
+        oldOffsetY !== renderCache.oldOffsetY ||
+        oldZoom !== renderCache.oldZoom;
 
     renderCache = {
         offsetX,
@@ -120,21 +132,11 @@ async function renderImage(
         oldZoom,
     };
 
-    // ctx.imageSmoothingEnabled = canvas.width < width;
-    ctx.imageSmoothingEnabled = false;
-
-    ctx.save();
-
-    // ctx.fillStyle = "orange";
-
-    // ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     const startTime = performance.now();
+
+    ctx.imageSmoothingEnabled = imageChanged;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.drawImage(
         dataBitmap,
@@ -166,8 +168,48 @@ async function renderImage(
     if (executionTime > 3) {
         console.log(`drawImage execution time: ${executionTime} milliseconds`);
     }
+}
 
-    ctx.restore();
+async function upscaleDataBitmap() {
+    if (!dataBitmap || !oldDataBitmap) {
+        return;
+    }
+
+    const nextPowerOfTwoSquareSize = Math.pow(
+        2,
+        Math.ceil(Math.log2(canvas.width))
+    );
+
+    if (
+        nextPowerOfTwoSquareSize <= dataBitmap.width ||
+        nextPowerOfTwoSquareSize <= oldDataBitmap.width
+    ) {
+        return;
+    }
+
+    const options = {
+        resizeWidth: nextPowerOfTwoSquareSize,
+        resizeHeight: nextPowerOfTwoSquareSize,
+        resizeQuality: "pixelated",
+    };
+
+    const prevDataBitmap = dataBitmap;
+    const prevOldDataBitmap = oldDataBitmap;
+
+    const [newDataBitmap, newOldDataBitmap] = await Promise.all([
+        createImageBitmap(dataBitmap, options),
+        createImageBitmap(oldDataBitmap, options),
+    ]);
+
+    if (dataBitmap === prevDataBitmap && oldDataBitmap === prevOldDataBitmap) {
+        dataBitmap = newDataBitmap;
+        oldDataBitmap = newOldDataBitmap;
+        prevDataBitmap.close();
+        prevOldDataBitmap.close();
+    } else {
+        newDataBitmap.close();
+        newOldDataBitmap.close();
+    }
 }
 
 let canvasFadingIn = false;
