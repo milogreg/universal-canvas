@@ -133,6 +133,7 @@ var old_display_square_size: usize = 0;
 var updated_pixels = false;
 var position_dirty = true;
 var updated_position = false;
+var filled_pixels = false;
 
 var prev_bounds_size: usize = 0;
 var prev_bounds_x: usize = 0;
@@ -346,6 +347,8 @@ export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: 
             position_dirty = false;
             updated_position = true;
         }
+
+        filled_pixels = true;
     }
 
     iteration_done = all_iterations_done;
@@ -950,6 +953,7 @@ const WorkCycleState = struct {
                 state_iteration_count = 0;
                 position_dirty = true;
                 parent_square_size = 64;
+                filled_pixels = false;
 
                 return true;
             } else if (backup_client.zoom >= 2 and backup_client.inBounds()) {
@@ -991,6 +995,8 @@ const WorkCycleState = struct {
                                 parent_square_size = display_square_size >> @intCast(square_size_shift);
                             }
 
+                            filled_pixels = false;
+
                             return true;
                         }
 
@@ -1008,7 +1014,7 @@ const WorkCycleState = struct {
     const FillPixels = struct {
         pub fn canIterate(this: FillPixels) bool {
             _ = this; // autofix
-            return !iteration_done or state_iteration_count == 0;
+            return (!iteration_done or state_iteration_count == 0) and !filled_pixels;
         }
 
         pub fn iterate(this: *FillPixels, iteration_amount: usize) bool {
@@ -1047,7 +1053,7 @@ const WorkCycleState = struct {
         pub fn canIterate(this: RefreshDisplay) bool {
             _ = this; // autofix
 
-            return (display_square_size != parent_square_size or updated_position or parent_square_size == 2) and iteration_done and !updated_pixels;
+            return !updated_pixels and filled_pixels;
         }
 
         fn initialize(this: *RefreshDisplay) void {
@@ -1099,6 +1105,8 @@ const WorkCycleState = struct {
             display_square_size = parent_square_size;
 
             updated_position = false;
+
+            filled_pixels = false;
 
             display_client = backup_client;
 
