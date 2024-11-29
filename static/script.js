@@ -1,42 +1,21 @@
 "use strict";
 
-// Set up the canvas
-const canvas = document.getElementById("main-canvas");
+const canvasContainer = document.getElementById("canvas-container");
 
-const ctx = canvas.getContext("2d", {
-    alpha: false,
-});
+const displayCanvas = document.getElementById("display-canvas");
+displayCanvas.width = 2048;
+displayCanvas.height = 2048;
 
-canvas.width = 1024;
-canvas.height = canvas.width;
+const displayCtx = displayCanvas.getContext("bitmaprenderer");
 
-canvas.style.opacity = "0";
+const oldDisplayCanvas = document.getElementById("old-display-canvas");
+oldDisplayCanvas.width = 2048;
+oldDisplayCanvas.height = 2048;
 
-// Create an observer to track changes in the canvas's client width and height
-const observer = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-        const { clientWidth, clientHeight } = entry.target;
+const oldDisplayCtx = oldDisplayCanvas.getContext("bitmaprenderer");
 
-        canvas.width = clientWidth;
-        canvas.height = clientHeight;
-
-        renderImageFromCache();
-
-        upscaleDataBitmap();
-        imageDirty = true;
-
-        if (workerInitialized) {
-            worker.postMessage({
-                type: "resizeViewport",
-                canvasWidth: canvas.width,
-                canvasHeight: canvas.height,
-            });
-        }
-    }
-});
-
-// Observe the canvas element
-observer.observe(canvas);
+const canvasLoadingAnimation = document.getElementById("canvas-loading");
+canvasLoadingAnimation.style.opacity = 1;
 
 const setPositionButton = document.getElementById("set-position");
 const saveOffsetButton = document.getElementById("save-offset");
@@ -47,32 +26,34 @@ const worker = new Worker("wasm-worker.js");
 
 let workerInitialized = false;
 
-let loading = false;
-
-let dataBitmap;
-let oldDataBitmap;
+let loading = true;
 
 let imageDirty = true;
 
-let renderCache;
+// Create an observer to track changes in the canvas's client width and height
+const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+        const { clientWidth, clientHeight } = entry.target;
 
-function renderImageFromCache() {
-    if (renderCache) {
-        const { offsetX, offsetY, zoom, oldOffsetX, oldOffsetY, oldZoom } =
-            renderCache;
-        renderImage(
-            null,
-            offsetX,
-            offsetY,
-            zoom,
-            null,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom,
-            false
-        );
+        canvasContainer.width = clientWidth;
+        canvasContainer.height = clientHeight;
+
+        // renderImageFromCache();
+
+        imageDirty = true;
+
+        if (workerInitialized) {
+            worker.postMessage({
+                type: "resizeViewport",
+                canvasWidth: canvasContainer.width,
+                canvasHeight: canvasContainer.height,
+            });
+        }
     }
-}
+});
+
+// Observe the canvas element
+observer.observe(canvasContainer);
 
 async function renderImage(
     data,
@@ -87,11 +68,11 @@ async function renderImage(
 
     maxDetail
 ) {
-    if ((!data && !renderCache) || (data && data.width === 0)) {
-        return;
-    }
+    if (loading) {
+        if (!data) {
+            return;
+        }
 
-    if (!renderCache) {
         loading = false;
         canvasFadeIn();
     }
@@ -99,117 +80,32 @@ async function renderImage(
     imageDirty = !maxDetail;
 
     if (data) {
-        if (dataBitmap) {
-            dataBitmap.close();
-        }
-
-        if (oldDataBitmap) {
-            oldDataBitmap.close();
-        }
-
-        dataBitmap = data;
-        oldDataBitmap = oldData;
-
-        upscaleDataBitmap();
+        displayCtx.transferFromImageBitmap(data);
+        oldDisplayCtx.transferFromImageBitmap(oldData);
     }
 
-    const imageChanged =
-        data ||
-        offsetX !== renderCache.offsetX ||
-        offsetY !== renderCache.offsetY ||
-        zoom !== renderCache.zoom ||
-        oldOffsetX !== renderCache.oldOffsetX ||
-        oldOffsetY !== renderCache.oldOffsetY ||
-        oldZoom !== renderCache.oldZoom;
-
-    renderCache = {
-        offsetX,
-        offsetY,
-        zoom,
-
-        oldOffsetX,
-        oldOffsetY,
-        oldZoom,
-    };
-
-    const startTime = performance.now();
-
-    ctx.imageSmoothingEnabled = imageChanged;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.drawImage(
-        dataBitmap,
-        0,
-        0,
-        dataBitmap.width,
-        dataBitmap.height,
-        offsetX,
-        offsetY,
-        canvas.width * zoom,
-        canvas.height * zoom
-    );
-
-    ctx.drawImage(
-        oldDataBitmap,
-        0,
-        0,
-        oldDataBitmap.width,
-        oldDataBitmap.height,
-        oldOffsetX,
-        oldOffsetY,
-        canvas.width * oldZoom,
-        canvas.height * oldZoom
-    );
-
-    const endTime = performance.now();
-    const executionTime = endTime - startTime;
-
-    if (executionTime > 3) {
-        console.log(`drawImage execution time: ${executionTime} milliseconds`);
-    }
+    transformCanvas(displayCanvas, offsetX, offsetY, zoom);
+    transformCanvas(oldDisplayCanvas, oldOffsetX, oldOffsetY, oldZoom);
 }
 
-async function upscaleDataBitmap() {
-    if (!dataBitmap || !oldDataBitmap) {
-        return;
-    }
+function transformCanvas(toTransform, offsetX, offsetY, zoom) {
+    const squareRatio = canvasContainer.width / toTransform.width;
 
-    const nextPowerOfTwoSquareSize = Math.pow(
-        2,
-        Math.ceil(Math.log2(canvas.width))
-    );
+    const squareSizeDiff =
+        zoom * squareRatio * toTransform.width - toTransform.width;
 
-    if (
-        nextPowerOfTwoSquareSize <= dataBitmap.width ||
-        nextPowerOfTwoSquareSize <= oldDataBitmap.width
-    ) {
-        return;
-    }
+    const transformX = offsetX + squareSizeDiff / 2;
+    const transformY = offsetY + squareSizeDiff / 2;
+    const transformScale = zoom * squareRatio;
 
-    const options = {
-        resizeWidth: nextPowerOfTwoSquareSize,
-        resizeHeight: nextPowerOfTwoSquareSize,
-        resizeQuality: "pixelated",
-    };
-
-    const prevDataBitmap = dataBitmap;
-    const prevOldDataBitmap = oldDataBitmap;
-
-    const [newDataBitmap, newOldDataBitmap] = await Promise.all([
-        createImageBitmap(dataBitmap, options),
-        createImageBitmap(oldDataBitmap, options),
-    ]);
-
-    if (dataBitmap === prevDataBitmap && oldDataBitmap === prevOldDataBitmap) {
-        dataBitmap = newDataBitmap;
-        oldDataBitmap = newOldDataBitmap;
-        prevDataBitmap.close();
-        prevOldDataBitmap.close();
-    } else {
-        newDataBitmap.close();
-        newOldDataBitmap.close();
-    }
+    toTransform.style.transform = `
+        matrix(
+            ${transformScale}, 
+            0, 0,
+            ${transformScale},
+            ${transformX}, ${transformY}
+        )
+    `;
 }
 
 let canvasFadingIn = false;
@@ -218,34 +114,26 @@ let canvasFadingOut = false;
 async function canvasFadeIn() {
     const animationDuration = 1000; // 1 second
     const animationStartTime = performance.now();
-
     if (canvasFadingIn) {
         return;
     }
-
-    canvasFadingOut = false;
     canvasFadingIn = true;
-
-    const startingOpacity = Number(canvas.style.opacity);
-
+    canvasFadingOut = false;
+    const startingOpacity = Number(canvasLoadingAnimation.style.opacity);
     function animateOpacity() {
         const currentTime = performance.now();
         const elapsed = currentTime - animationStartTime;
-
-        const opacity = Math.min(
-            1,
-            startingOpacity + elapsed / animationDuration
+        const opacity = Math.max(
+            0,
+            startingOpacity - elapsed / animationDuration
         );
-
-        canvas.style.opacity = opacity;
-
-        if (opacity < 1 && canvasFadingIn) {
+        canvasLoadingAnimation.style.opacity = opacity;
+        if (opacity > 0 && canvasFadingIn) {
             requestAnimationFrame(animateOpacity);
         } else {
             canvasFadingIn = false;
         }
     }
-
     animateOpacity();
 }
 
@@ -257,22 +145,23 @@ async function canvasFadeOut() {
         return;
     }
 
-    canvasFadingOut = true;
     canvasFadingIn = false;
+    canvasFadingOut = true;
 
-    const startingOpacity = Number(canvas.style.opacity);
+    const startingOpacity = Number(canvasLoadingAnimation.style.opacity);
 
     function animateOpacity() {
         const currentTime = performance.now();
         const elapsed = currentTime - animationStartTime;
-        const opacity = Math.max(
-            0,
-            startingOpacity - elapsed / animationDuration
+
+        const opacity = Math.min(
+            1,
+            startingOpacity + elapsed / animationDuration
         );
 
-        canvas.style.opacity = opacity;
+        canvasLoadingAnimation.style.opacity = opacity;
 
-        if (opacity > 0 && canvasFadingOut) {
+        if (opacity < 1 && canvasFadingOut) {
             requestAnimationFrame(animateOpacity);
         } else {
             canvasFadingOut = false;
@@ -316,8 +205,8 @@ worker.onmessage = async function (e) {
                 worker.addEventListener("message", handleWorkerMessage);
                 worker.postMessage({
                     type: "resizeViewport",
-                    canvasWidth: canvas.width,
-                    canvasHeight: canvas.height,
+                    canvasWidth: canvasContainer.width,
+                    canvasHeight: canvasContainer.height,
                 });
             });
 
@@ -439,23 +328,23 @@ async function zoomOnMouseHold() {
 
     // canvas.addEventListener("mousemove", handleMouseMoveDragging);
 
-    canvas.addEventListener("mousedown", startZoom);
-    canvas.addEventListener("mouseup", stopZoom);
-    canvas.addEventListener("mousemove", setMousePosition);
-    canvas.addEventListener("mousemove", handleMouseMoveDragging);
+    canvasContainer.addEventListener("mousedown", startZoom);
+    canvasContainer.addEventListener("mouseup", stopZoom);
+    canvasContainer.addEventListener("mousemove", setMousePosition);
+    canvasContainer.addEventListener("mousemove", handleMouseMoveDragging);
 
-    canvas.addEventListener("touchstart", (event) => {
+    canvasContainer.addEventListener("touchstart", (event) => {
         event.preventDefault();
         startZoom();
         setTouchPosition(event);
     });
 
-    canvas.addEventListener("touchend", (event) => {
+    canvasContainer.addEventListener("touchend", (event) => {
         event.preventDefault();
         stopZoom();
     });
 
-    canvas.addEventListener("touchmove", (event) => {
+    canvasContainer.addEventListener("touchmove", (event) => {
         event.preventDefault();
         setTouchPosition(event);
     });
@@ -489,7 +378,7 @@ async function zoomOnMouseHold() {
 
     const scrolls = [];
 
-    canvas.addEventListener("wheel", async (event) => {
+    canvasContainer.addEventListener("wheel", async (event) => {
         event.preventDefault();
 
         scrolls.push({
@@ -572,16 +461,16 @@ async function zoomOnMouseHold() {
                     let offsetY = 0;
 
                     if (pressedKeys["ArrowUp"]) {
-                        offsetY -= canvas.width * deltaTime;
+                        offsetY -= canvasContainer.width * deltaTime;
                     }
                     if (pressedKeys["ArrowDown"]) {
-                        offsetY += canvas.width * deltaTime;
+                        offsetY += canvasContainer.width * deltaTime;
                     }
                     if (pressedKeys["ArrowLeft"]) {
-                        offsetX -= canvas.width * deltaTime;
+                        offsetX -= canvasContainer.width * deltaTime;
                     }
                     if (pressedKeys["ArrowRight"]) {
-                        offsetX += canvas.width * deltaTime;
+                        offsetX += canvasContainer.width * deltaTime;
                     }
 
                     worker.postMessage({
@@ -652,7 +541,6 @@ setPositionButton.onclick = async () => {
     if (fileInputContents && fileInputContents.length >= 1) {
         canvasFadeOut();
 
-        renderCache = undefined;
         imageDirty = true;
         loading = true;
 
@@ -687,7 +575,6 @@ async function handleFile(file) {
         // Use the imageData as needed
         canvasFadeOut();
 
-        renderCache = undefined;
         imageDirty = true;
         loading = true;
 

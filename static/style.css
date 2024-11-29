@@ -55,24 +55,30 @@ main {
     gap: 1rem;
 }
 
-.canvas-container {
-    /* display: flex;
-    flex-direction: column; */
-    /* display: flex */
-    /* aspect-ratio: 1/1; */
+#canvas-container {
+    position: relative;
+    overflow: clip;
+    display: block;
+    aspect-ratio: 1/1;
+
+    background: repeating-linear-gradient(45deg, #ffffff, #ffffff 2.5%, #eeeeee 2.5%, #eeeeee 5%);
 }
 
-
-
-
-#main-canvas {
+#display-canvas, #old-display-canvas {
+    will-change: transform;
     image-rendering: pixelated;
+    top: 0;
+    left: 0;
+    position: absolute;
+    pointer-events: none;
+}
 
-    display: flex;
+#display-canvas {
+    z-index: 0;
+}
 
-    /* height: min-content; */
-
-    aspect-ratio: 1/1;
+#old-display-canvas {
+    z-index: 1;
 }
 
 
@@ -94,17 +100,13 @@ main {
 }
 
 #canvas-loading {
-    z-index: -1;
-
-
+    z-index: 1;
     position: relative;
-    top: -100%;
+
+    pointer-events: none;
 
     width: 100%;
     height: 100%;
-
-
-
 
     --percent-a: var(--inverse-waterdrop-percent);
     --percent-b: calc(var(--percent-a) + 20%);
@@ -117,22 +119,13 @@ main {
 
 
 @media screen and (orientation: landscape) {
-    #main-canvas {
-        height: 100%;
-        /* height: 1024px; */
-    }
-
-    .canvas-container {
+    #canvas-container {
         height: 100%;
     }
 }
 
 @media screen and (orientation: portrait) {
-    #main-canvas {
-        width: 100%;
-    }
-
-    .canvas-container {
+    #canvas-container {
         width: 100%;
     }
 }

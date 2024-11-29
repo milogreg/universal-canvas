@@ -39,9 +39,15 @@ const env = {
         setTimeout(async () => {
             const startTime = performance.now();
 
+            const options = {
+                resizeWidth: 2048,
+                resizeHeight: 2048,
+                resizeQuality: "pixelated",
+            };
+
             [dataBitmap, oldDataBitmap] = await Promise.all([
-                createImageBitmap(imageData),
-                createImageBitmap(oldImageData),
+                createImageBitmap(imageData, options),
+                createImageBitmap(oldImageData, options),
             ]);
 
             pollingBitmap = false;
