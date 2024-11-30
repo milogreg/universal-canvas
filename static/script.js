@@ -40,7 +40,7 @@ const observer = new ResizeObserver((entries) => {
 
         // renderImageFromCache();
 
-        imageDirty = true;
+        renderWake();
 
         if (workerInitialized) {
             worker.postMessage({
@@ -129,6 +129,9 @@ async function canvasFadeIn() {
         if (opacity > 0 && canvasFadingIn) {
             requestAnimationFrame(animateOpacity);
         } else {
+            if (opacity === 0) {
+                canvasLoadingAnimation.style.display = "none";
+            }
             canvasFadingIn = false;
         }
     }
@@ -147,6 +150,10 @@ async function canvasFadeOut() {
     canvasFadingOut = true;
 
     const startingOpacity = Number(canvasLoadingAnimation.style.opacity);
+
+    if (startingOpacity === 0) {
+        canvasLoadingAnimation.style.removeProperty("display");
+    }
 
     function animateOpacity() {
         const currentTime = performance.now();
@@ -251,7 +258,7 @@ worker.onmessage = async function (e) {
         }
 
         case "renderWake": {
-            imageDirty = true;
+            renderWake();
 
             break;
         }
@@ -277,13 +284,7 @@ worker.onmessage = async function (e) {
     }
 };
 
-let clickZoomEnabled = clickZoomToggle.checked;
-
-clickZoomToggle.addEventListener("change", () => {
-    clickZoomEnabled = clickZoomToggle.checked;
-});
-
-async function zoomOnMouseHold() {
+function renderLoopInit() {
     let lastFrameTime = performance.now();
     let isMouseDown = false;
     let mouseX = 0;
@@ -299,55 +300,21 @@ async function zoomOnMouseHold() {
         mouseY = event.touches[0].clientY;
     };
 
-    const startZoom = () => {
-        isMouseDown = true;
-    };
-
     const stopZoom = () => {
         isMouseDown = false;
     };
 
     const drags = [];
 
-    async function handleMouseMoveDragging(event) {
-        if ((event.buttons & 1) == 1 && !clickZoomEnabled) {
-            drags.push({
-                offsetX: event.movementX,
-                offsetY: event.movementY,
-            });
-        }
-    }
-
     const pressedKeys = {};
 
-    document.addEventListener("keydown", (event) => {
-        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-        if (arrowKeys.includes(event.key)) {
-            event.preventDefault();
-            pressedKeys[event.key] = true;
-        }
-    });
-
-    document.addEventListener("keyup", (event) => {
-        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-        if (arrowKeys.includes(event.key)) {
-            event.preventDefault();
-            pressedKeys[event.key] = false;
-        }
-    });
+    let clickZoomEnabled = clickZoomToggle.checked;
 
     // canvas.addEventListener("mousemove", handleMouseMoveDragging);
 
-    canvasContainer.addEventListener("mousedown", startZoom);
     canvasContainer.addEventListener("mouseup", stopZoom);
-    canvasContainer.addEventListener("mousemove", setMousePosition);
-    canvasContainer.addEventListener("mousemove", handleMouseMoveDragging);
 
-    canvasContainer.addEventListener("touchstart", (event) => {
-        event.preventDefault();
-        startZoom();
-        setTouchPosition(event);
-    });
+    canvasContainer.addEventListener("mousemove", setMousePosition);
 
     canvasContainer.addEventListener("touchend", (event) => {
         event.preventDefault();
@@ -388,16 +355,6 @@ async function zoomOnMouseHold() {
 
     const scrolls = [];
 
-    canvasContainer.addEventListener("wheel", async (event) => {
-        event.preventDefault();
-
-        scrolls.push({
-            mouseX: event.offsetX,
-            mouseY: event.offsetY,
-            deltaY: event.deltaY,
-        });
-    });
-
     const loop = async () => {
         const currentFrameTime = performance.now();
         const deltaTime = (currentFrameTime - lastFrameTime) / 1000; // Convert to seconds
@@ -427,6 +384,13 @@ async function zoomOnMouseHold() {
                     pressedKeys["ArrowDown"] ||
                     pressedKeys["ArrowLeft"] ||
                     pressedKeys["ArrowRight"];
+
+                // imageDirty = true;
+
+                if (!imageDirty) {
+                    console.log("done rendering.");
+                    return;
+                }
 
                 scrolls.forEach(async (scroll) => {
                     worker.postMessage({
@@ -491,20 +455,109 @@ async function zoomOnMouseHold() {
                 }
             }
 
-            if (imageDirty || loading) {
-                worker.postMessage({
-                    type: "renderImage",
-                });
-            }
+            worker.postMessage({
+                type: "renderImage",
+            });
         }
 
         requestAnimationFrame(loop);
     };
 
-    requestAnimationFrame(loop);
+    const beginRenderLoop = () => {
+        lastFrameTime = performance.now();
+
+        console.log("rendering...");
+
+        requestAnimationFrame(loop);
+    };
+
+    const wake = () => {
+        if (!imageDirty) {
+            imageDirty = true;
+            beginRenderLoop();
+        }
+    };
+
+    canvasContainer.addEventListener("wheel", async (event) => {
+        event.preventDefault();
+
+        scrolls.push({
+            mouseX: event.offsetX,
+            mouseY: event.offsetY,
+            deltaY: event.deltaY,
+        });
+
+        wake();
+    });
+
+    document.addEventListener("keydown", (event) => {
+        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+        if (arrowKeys.includes(event.key)) {
+            event.preventDefault();
+            pressedKeys[event.key] = true;
+
+            wake();
+        }
+    });
+
+    document.addEventListener("keyup", (event) => {
+        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+        if (arrowKeys.includes(event.key)) {
+            event.preventDefault();
+            pressedKeys[event.key] = false;
+
+            wake();
+        }
+    });
+
+    async function handleMouseMoveDragging(event) {
+        if ((event.buttons & 1) == 1 && !clickZoomEnabled) {
+            drags.push({
+                offsetX: event.movementX,
+                offsetY: event.movementY,
+            });
+
+            wake();
+        }
+    }
+
+    const startZoom = () => {
+        isMouseDown = true;
+
+        if (clickZoomEnabled) {
+            wake();
+        }
+    };
+
+    canvasContainer.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        startZoom();
+        setTouchPosition(event);
+    });
+
+    clickZoomToggle.addEventListener("change", () => {
+        clickZoomEnabled = clickZoomToggle.checked;
+
+        if (clickZoomEnabled && isMouseDown) {
+            wake();
+        }
+    });
+
+    canvasContainer.addEventListener("mousedown", startZoom);
+    canvasContainer.addEventListener("mousemove", handleMouseMoveDragging);
+
+    return beginRenderLoop;
 }
 
-zoomOnMouseHold();
+const renderLoop = renderLoopInit();
+renderLoop();
+
+function renderWake() {
+    if (!imageDirty) {
+        imageDirty = true;
+        renderLoop();
+    }
+}
 
 saveOffsetButton.onclick = async () => {
     const myPromise = new Promise((resolve) => {
@@ -548,7 +601,6 @@ setPositionButton.onclick = async () => {
     if (fileInputContents && fileInputContents.length >= 1) {
         canvasFadeOut();
 
-        imageDirty = true;
         loading = true;
 
         await new Promise((resolve) => {
@@ -582,7 +634,6 @@ async function handleFile(file) {
         // Use the imageData as needed
         canvasFadeOut();
 
-        imageDirty = true;
         loading = true;
 
         await new Promise((resolve) => {

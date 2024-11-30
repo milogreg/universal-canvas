@@ -1123,14 +1123,14 @@ const WorkCycleState = struct {
             if (any_iterated) {
                 if (has_max_detail) {
                     js.renderWake();
+                    has_max_detail = false;
                 }
             } else {
-                if (!has_max_detail) {
+                if (!has_max_detail and !updated_pixels) {
                     js.renderSleep();
+                    has_max_detail = true;
                 }
             }
-
-            has_max_detail = !any_iterated;
         }
 
         if (parent_square_size < 2) {
