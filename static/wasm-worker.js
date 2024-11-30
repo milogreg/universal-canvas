@@ -16,9 +16,6 @@ const env = {
         oldWidth,
         oldHeight
     ) => {
-        dataBitmap = undefined;
-        oldDataBitmap = undefined;
-
         const data = new Uint8ClampedArray(
             memory.buffer,
             dataPtr,
@@ -45,10 +42,20 @@ const env = {
                 resizeQuality: "pixelated",
             };
 
-            [dataBitmap, oldDataBitmap] = await Promise.all([
+            const [newDataBitmap, newOldDataBitmap] = await Promise.all([
                 createImageBitmap(imageData, options),
                 createImageBitmap(oldImageData, options),
             ]);
+
+            if (dataBitmap) {
+                dataBitmap.close();
+            }
+            if (oldDataBitmap) {
+                oldDataBitmap.close();
+            }
+
+            dataBitmap = newDataBitmap;
+            oldDataBitmap = newOldDataBitmap;
 
             pollingBitmap = false;
 
@@ -60,7 +67,7 @@ const env = {
     },
 
     imageBitmapFilled: () => {
-        return !!dataBitmap && !!oldDataBitmap;
+        return !pollingBitmap;
     },
 
     renderImage: (
@@ -75,7 +82,7 @@ const env = {
         updatedPixels,
         maxDetail
     ) => {
-        if (!updatedPixels) {
+        if (!updatedPixels || !dataBitmap || !oldDataBitmap) {
             self.postMessage({
                 type: "renderImage",
 
@@ -113,7 +120,23 @@ const env = {
             },
             [dataBitmap, oldDataBitmap]
         );
+
+        dataBitmap = undefined;
+        oldDataBitmap = undefined;
     },
+
+    renderSleep: () => {
+        self.postMessage({
+            type: "renderSleep",
+        });
+    },
+
+    renderWake: () => {
+        self.postMessage({
+            type: "renderWake",
+        });
+    },
+
     printString: (ptr, len) => {
         // Create a DataView or Uint8Array to access the memory buffer
         const bytes = new Uint8Array(memory.buffer, ptr, len);

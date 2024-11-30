@@ -77,8 +77,6 @@ async function renderImage(
         canvasFadeIn();
     }
 
-    imageDirty = !maxDetail;
-
     if (data) {
         displayCtx.transferFromImageBitmap(data);
         oldDisplayCtx.transferFromImageBitmap(oldData);
@@ -244,6 +242,18 @@ worker.onmessage = async function (e) {
 
                 break;
             }
+        }
+
+        case "renderSleep": {
+            imageDirty = false;
+
+            break;
+        }
+
+        case "renderWake": {
+            imageDirty = true;
+
+            break;
         }
 
         case "zoomViewportComplete": {
@@ -480,9 +490,6 @@ async function zoomOnMouseHold() {
                     });
                 }
             }
-
-            // TODO calculate imageDirty properly so it doesn't need to be forced to true
-            imageDirty = true;
 
             if (imageDirty || loading) {
                 worker.postMessage({

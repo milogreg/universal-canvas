@@ -27,6 +27,9 @@ const js = struct {
         updated_pixels: bool,
         max_detail: bool,
     ) void;
+
+    extern fn renderSleep() void;
+    extern fn renderWake() void;
 };
 
 pub const Panic = struct {
@@ -132,231 +135,7 @@ var old_display_square_size: usize = 0;
 
 var updated_pixels = false;
 var position_dirty = true;
-var updated_position = false;
 var filled_pixels = false;
-
-var prev_bounds_size: usize = 0;
-var prev_bounds_x: usize = 0;
-var prev_bounds_y: usize = 0;
-
-export fn fillPixelsIterate(square_size: usize, viewport_zoom: f64, viewport_x: f64, viewport_y: f64) bool {
-    const target_square_size = square_size;
-    parent_square_size = target_square_size;
-
-    const bounds_full_size: usize = @as(usize, @intFromFloat(@as(f64, @floatFromInt(target_square_size)) / viewport_zoom));
-
-    const bounds_full_x: usize = @as(usize, @intFromFloat(viewport_x / @max(1, viewport_zoom)));
-    const bounds_full_y: usize = @as(usize, @intFromFloat(viewport_y / @max(1, viewport_zoom)));
-
-    // const bounds_changed =
-    //     bounds_full_x < prev_bounds_x or
-    //     bounds_full_y < prev_bounds_y or
-    //     prev_bounds_x + prev_bounds_size < bounds_full_x + bounds_full_size or
-    //     prev_bounds_y + prev_bounds_size < bounds_full_y + bounds_full_size;
-
-    const bounds_changed =
-        bounds_full_x != prev_bounds_x or
-        bounds_full_y != prev_bounds_y or
-        prev_bounds_size != bounds_full_size;
-
-    if (iteration_done and state_iteration_count != 0 and (!bounds_changed or true)) {
-        return true;
-    }
-    prev_bounds_size = bounds_full_size;
-    prev_bounds_x = bounds_full_x;
-    prev_bounds_y = bounds_full_y;
-
-    // js.print(@intCast(bounds_full_size));
-
-    iteration_done = false;
-
-    if (parent_pixels.len > 0 and parent_pixels.len != target_square_size * target_square_size) {
-        if (parent_pixels_buf.len < target_square_size * target_square_size) {
-            parent_pixels_buf = allocator.realloc(parent_pixels_buf, target_square_size * target_square_size) catch @panic("OOM");
-        }
-
-        parent_pixels = parent_pixels_buf[0 .. target_square_size * target_square_size];
-    } else if (parent_pixels.len == 0) {
-        parent_pixels_buf = allocator.alloc(render.Color, target_square_size * target_square_size) catch @panic("OOM");
-
-        parent_pixels = parent_pixels_buf[0 .. target_square_size * target_square_size];
-    }
-
-    var output_color_chunks: [4][][]render.Color = undefined;
-
-    const output_color_chunks_backing = allocator.alloc([]render.Color, target_square_size * 2) catch @panic("OOM");
-    defer allocator.free(output_color_chunks_backing);
-
-    for (&output_color_chunks, 0..) |*output_color_chunk, i| {
-        output_color_chunk.* = output_color_chunks_backing[i * (target_square_size / 2) .. (i + 1) * (target_square_size / 2)];
-    }
-
-    for (&output_color_chunks, 0..) |output_color_chunk, i| {
-        const x_offset = (i & 1) * (target_square_size / 2);
-        const y_offset = (i >> 1) * (target_square_size / 2);
-
-        for (0..target_square_size / 2) |y| {
-            const offset_x = x_offset;
-            const offset_y = y + y_offset;
-
-            const start_idx = offset_y * (target_square_size) + offset_x;
-
-            output_color_chunk[y] = parent_pixels[start_idx .. start_idx + (target_square_size / 2)];
-        }
-    }
-
-    const sub_square_size = target_square_size / 2;
-
-    var all_iterations_done = true;
-
-    for (0..4) |i| {
-        if (state_iteration_count == 0) {
-            if (offset_initial_states[i] == null) {
-                const start_time = js.getTime();
-
-                const initial_state = state_tree.traverseFromRoot(
-                    render.VirtualDigitArray.fromDigitArray(quadrant_offset_digits[i].array, 0, 0, 0),
-                    quadrant_offset_digits[i].array.length,
-                ) catch @panic("OOM");
-
-                const end_time = js.getTime();
-
-                if (end_time - start_time > 2) {
-                    jsPrint("traverseFromRoot time: {d} ms", .{end_time - start_time});
-                }
-
-                offset_initial_states[i] = initial_state;
-            }
-
-            const initial_state = offset_initial_states[i].?;
-
-            const color_chunks = output_color_chunks[i];
-
-            if (iteration_states[i] == null) {
-                iteration_states[i] = render.FillIterationState.init(
-                    allocator,
-                    sub_square_size,
-                    quadrant_offset_digits[i].array,
-                    initial_state,
-                    color_chunks,
-                ) catch @panic("OOM");
-            } else {
-                const start_time = js.getTime();
-
-                defer {
-                    const end_time = js.getTime();
-
-                    if (end_time - start_time > 2) {
-                        jsPrint("iteration_states reset time: {d} ms", .{end_time - start_time});
-                    }
-                }
-
-                iteration_states[i].?.reset(
-                    sub_square_size,
-                    quadrant_offset_digits[i].array,
-                    initial_state,
-                    color_chunks,
-                ) catch @panic("OOM");
-            }
-
-            // if (i == 0) {
-            //     jsPrint("base color: {}", .{initial_state.color});
-            //     jsPrint("last digit: {}", .{quadrant_offset_digits[i].array.get(quadrant_offset_digits[i].array.length - 1)});
-            // }
-
-            // if (iteration_states[i] == null or iteration_states[i].?.len != sub_square_size * sub_square_size) {
-            //     if (iteration_states[i]) |state| {
-            //         allocator.free(state);
-            //     }
-
-            //     iteration_states[i] = allocator.alloc(render2.SelfConsumingReaderState, sub_square_size * sub_square_size) catch @panic("OOM");
-            // }
-
-            // @memset(iteration_states[i].?, initial_state);
-        }
-
-        const iteration_state = &(iteration_states[i].?);
-
-        // const bounds_start_x = ((i & 1) ^ 1) * (sub_square_size - sub_square_size / 2);
-
-        // const bounds_start_y = ((i >> 1) ^ 1) * (sub_square_size - sub_square_size / 2);
-
-        // const bounds_end_x = bounds_start_x + sub_square_size / 2;
-        // const bounds_end_y = bounds_start_y + sub_square_size / 2;
-
-        const bounds_start_x: usize = if (i & 1 == 1) @max(0, @as(isize, @intCast(bounds_full_x)) - @as(isize, @intCast(sub_square_size))) else bounds_full_x;
-        const bounds_start_y: usize = if (i >> 1 == 1) @max(0, @as(isize, @intCast(bounds_full_y)) - @as(isize, @intCast(sub_square_size))) else bounds_full_y;
-
-        const x_used_by_0 = @min(bounds_full_size, sub_square_size - @min(sub_square_size, bounds_full_x));
-        const y_used_by_0 = @min(bounds_full_size, sub_square_size - @min(sub_square_size, bounds_full_y));
-
-        const bounds_end_x: usize = if (i & 1 == 1) @min(sub_square_size, bounds_start_x + bounds_full_size - x_used_by_0) else @min(sub_square_size, bounds_start_x + bounds_full_size);
-        _ = bounds_end_x; // autofix
-        const bounds_end_y: usize = if (i >> 1 == 1) @min(sub_square_size, bounds_start_y + bounds_full_size - y_used_by_0) else @min(sub_square_size, bounds_start_y + bounds_full_size);
-        _ = bounds_end_y; // autofix
-
-        // const temp = render2.fillColorsTerminateSelfConsumingIterateBlindWithBounds(
-        //     allocator,
-        //     iteration_state,
-        //     quadrant_offset_digits[i].array,
-        //     offset_initial_states[i].?,
-        //     iteration_rate,
-        //     bounds_start_x,
-        //     bounds_start_y,
-        //     bounds_end_x,
-        //     bounds_end_y,
-        // ) catch @panic("OOM");
-
-        const start_time = js.getTime();
-
-        const temp = iteration_state.iterate(iteration_rate);
-
-        const end_time = js.getTime();
-
-        if (end_time - start_time > 2) {
-            jsPrint("iteration_state iterate time: {d} ms", .{end_time - start_time});
-        }
-
-        // const temp = render2.fillColorsTerminateSelfConsumingIterateLayerBlindWithBounds(
-        //     allocator,
-        //     iteration_state,
-        //     quadrant_offset_digits[i].array,
-        //     offset_initial_states[i].?,
-        //     sub_square_size / 4,
-        //     bounds_start_x,
-        //     bounds_start_y,
-        //     bounds_end_x,
-        //     bounds_end_y,
-        // ) catch @panic("OOM");
-        all_iterations_done = all_iterations_done and !temp;
-    }
-
-    if (all_iterations_done) {
-        // for (0..4) |i| {
-        //     const iteration_state_states = iteration_states[i].?.states;
-
-        //     const output_colors = output_color_chunks[i];
-
-        //     for (0..sub_square_size) |y| {
-        //         for (iteration_state_states[y * sub_square_size .. (y + 1) * sub_square_size], 0..) |state, j| {
-        //             output_colors[y][j] = state.color;
-        //         }
-        //     }
-        // }
-        if (position_dirty) {
-            position_dirty = false;
-            updated_position = true;
-        }
-
-        filled_pixels = true;
-    }
-
-    iteration_done = all_iterations_done;
-    state_iteration_count = 1;
-    // state_iteration_count += iteration_rate;
-
-    return false;
-}
 
 var display_client: ClientPosition = .{
     .zoom = 1,
@@ -808,23 +587,25 @@ export fn renderPixels() void {
 }
 
 export fn zoomViewport(mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
+    position_dirty = true;
+
     old_display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
-
     display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
-
     backup_client.updatePosition(mouse_x, mouse_y, zoom_delta);
 }
 
 export fn moveViewport(offset_x: f64, offset_y: f64) void {
+    position_dirty = true;
+
     old_display_client.move(offset_x, offset_y);
-
     display_client.move(offset_x, offset_y);
-
     backup_client.move(offset_x, offset_y);
 }
 
 export fn resizeViewport(canvas_width: usize, canvas_height: usize) void {
     std.debug.assert(canvas_width > 0 and canvas_height > 0);
+
+    position_dirty = true;
 
     old_display_client.updateDimensions(canvas_width, canvas_height);
     display_client.updateDimensions(canvas_width, canvas_height);
@@ -851,14 +632,14 @@ const WorkCycleState = struct {
 
     pub const init: WorkCycleState = .{
         .update_position = .{},
-        .fill_pixels = .{},
+        .fill_pixels = .init,
         .refresh_display = .init,
     };
 
     const UpdatePosition = struct {
         pub fn canIterate(this: UpdatePosition) bool {
             _ = this; // autofix
-            return true;
+            return position_dirty;
         }
 
         pub fn iterate(this: *UpdatePosition, iteration_amount: usize) bool {
@@ -951,7 +732,6 @@ const WorkCycleState = struct {
                 }
 
                 state_iteration_count = 0;
-                position_dirty = true;
                 parent_square_size = 64;
                 filled_pixels = false;
 
@@ -987,7 +767,6 @@ const WorkCycleState = struct {
                             backup_client = test_client;
 
                             state_iteration_count = 0;
-                            position_dirty = true;
 
                             const square_size_shift: usize = @intFromFloat(@max(0, (std.math.log2(display_client.zoom / 2))));
 
@@ -1007,31 +786,186 @@ const WorkCycleState = struct {
                 }
             }
 
+            position_dirty = false;
+
             return false;
         }
     };
 
     const FillPixels = struct {
+        initialized: bool,
+        output_color_chunks: [4][][]render.Color,
+        output_color_chunks_backing: [][]render.Color,
+        setup_initial_states: bool,
+
+        pub const init: FillPixels = .{
+            .initialized = false,
+            .output_color_chunks = undefined,
+            .output_color_chunks_backing = undefined,
+            .setup_initial_states = undefined,
+        };
+
         pub fn canIterate(this: FillPixels) bool {
-            _ = this; // autofix
-            return (!iteration_done or state_iteration_count == 0) and !filled_pixels;
+            return (this.initialized or state_iteration_count == 0) and !filled_pixels;
+        }
+
+        fn initialize(this: *FillPixels) void {
+            this.initialized = true;
+
+            this.setup_initial_states = false;
+
+            state_iteration_count = 1;
+
+            if (parent_pixels.len > 0 and parent_pixels.len != parent_square_size * parent_square_size) {
+                if (parent_pixels_buf.len < parent_square_size * parent_square_size) {
+                    parent_pixels_buf = allocator.realloc(parent_pixels_buf, parent_square_size * parent_square_size) catch @panic("OOM");
+                }
+
+                parent_pixels = parent_pixels_buf[0 .. parent_square_size * parent_square_size];
+            } else if (parent_pixels.len == 0) {
+                parent_pixels_buf = allocator.alloc(render.Color, parent_square_size * parent_square_size) catch @panic("OOM");
+
+                parent_pixels = parent_pixels_buf[0 .. parent_square_size * parent_square_size];
+            }
+
+            this.output_color_chunks_backing = allocator.alloc([]render.Color, parent_square_size * 2) catch @panic("OOM");
+
+            const sub_square_size = parent_square_size / 2;
+
+            for (&this.output_color_chunks, 0..) |*output_color_chunk, i| {
+                output_color_chunk.* = this.output_color_chunks_backing[i * sub_square_size .. (i + 1) * sub_square_size];
+            }
+
+            for (&this.output_color_chunks, 0..) |output_color_chunk, i| {
+                const x_offset = (i & 1) * sub_square_size;
+                const y_offset = (i >> 1) * sub_square_size;
+
+                for (0..parent_square_size / 2) |y| {
+                    const offset_x = x_offset;
+                    const offset_y = y + y_offset;
+
+                    const start_idx = offset_y * (parent_square_size) + offset_x;
+
+                    output_color_chunk[y] = parent_pixels[start_idx .. start_idx + sub_square_size];
+                }
+            }
+        }
+
+        fn deinitialize(this: *FillPixels) void {
+            this.reset();
+
+            filled_pixels = true;
+        }
+
+        fn reset(this: *FillPixels) void {
+            allocator.free(this.output_color_chunks_backing);
+
+            this.initialized = false;
         }
 
         pub fn iterate(this: *FillPixels, iteration_amount: usize) bool {
-            _ = this; // autofix
-            _ = iteration_amount; // autofix
-
-            const start_time = js.getTime();
-
-            _ = fillPixelsIterate(parent_square_size, backup_client.zoom, 0, 0);
-
-            const end_time = js.getTime();
-
-            if (end_time - start_time > 3) {
-                jsPrint("fillPixelsIterate time: {d} ms", .{end_time - start_time});
+            if (this.initialized and state_iteration_count == 0) {
+                this.reset();
             }
 
-            return !iteration_done;
+            if (!this.initialized) {
+                this.initialize();
+
+                return true;
+            }
+
+            // const start_time_outer = js.getTime();
+            // defer {
+            //     const end_time_outer = js.getTime();
+
+            //     if (end_time_outer - start_time_outer > 3) {
+            //         jsPrint("fillPixelsIterate time: {d} ms", .{end_time_outer - start_time_outer});
+            //     }
+            // }
+
+            const sub_square_size = parent_square_size / 2;
+
+            if (!this.setup_initial_states) {
+                for (0..4) |i| {
+                    if (offset_initial_states[i] == null) {
+                        const start_time = js.getTime();
+
+                        const initial_state = state_tree.traverseFromRoot(
+                            render.VirtualDigitArray.fromDigitArray(quadrant_offset_digits[i].array, 0, 0, 0),
+                            quadrant_offset_digits[i].array.length,
+                        ) catch @panic("OOM");
+
+                        const end_time = js.getTime();
+
+                        if (end_time - start_time > 2) {
+                            jsPrint("traverseFromRoot time: {d} ms", .{end_time - start_time});
+                        }
+
+                        offset_initial_states[i] = initial_state;
+                    }
+
+                    const initial_state = offset_initial_states[i].?;
+
+                    const color_chunks = this.output_color_chunks[i];
+
+                    if (iteration_states[i] == null) {
+                        iteration_states[i] = render.FillIterationState.init(
+                            allocator,
+                            sub_square_size,
+                            quadrant_offset_digits[i].array,
+                            initial_state,
+                            color_chunks,
+                        ) catch @panic("OOM");
+                    } else {
+                        const start_time = js.getTime();
+
+                        defer {
+                            const end_time = js.getTime();
+
+                            if (end_time - start_time > 2) {
+                                jsPrint("iteration_states reset time: {d} ms", .{end_time - start_time});
+                            }
+                        }
+
+                        iteration_states[i].?.reset(
+                            sub_square_size,
+                            quadrant_offset_digits[i].array,
+                            initial_state,
+                            color_chunks,
+                        ) catch @panic("OOM");
+                    }
+                }
+
+                this.setup_initial_states = true;
+
+                return true;
+            }
+
+            var all_iterations_done = true;
+
+            for (0..4) |i| {
+                const iteration_state = &(iteration_states[i].?);
+
+                const start_time = js.getTime();
+
+                const temp = iteration_state.iterate(iteration_amount);
+
+                const end_time = js.getTime();
+
+                if (end_time - start_time > 2) {
+                    jsPrint("iteration_state iterate time: {d} ms", .{end_time - start_time});
+                }
+
+                all_iterations_done = all_iterations_done and !temp;
+            }
+
+            if (!all_iterations_done) {
+                return true;
+            }
+
+            this.deinitialize();
+
+            return false;
         }
     };
 
@@ -1053,7 +987,7 @@ const WorkCycleState = struct {
         pub fn canIterate(this: RefreshDisplay) bool {
             _ = this; // autofix
 
-            return !updated_pixels and filled_pixels;
+            return filled_pixels;
         }
 
         fn initialize(this: *RefreshDisplay) void {
@@ -1104,8 +1038,6 @@ const WorkCycleState = struct {
 
             display_square_size = parent_square_size;
 
-            updated_position = false;
-
             filled_pixels = false;
 
             display_client = backup_client;
@@ -1126,8 +1058,6 @@ const WorkCycleState = struct {
         }
 
         pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
-            std.debug.assert(!updated_pixels);
-
             if (!this.initialized) {
                 this.initialize();
 
@@ -1152,6 +1082,7 @@ const WorkCycleState = struct {
                     return true;
                 }
             }
+
             if (!this.started_filling_bitmap) {
                 if (this.update_old_display) {
                     js.fillImageBitmap(
@@ -1186,7 +1117,25 @@ const WorkCycleState = struct {
     };
 
     pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
+        var any_iterated = false;
+
+        defer {
+            if (any_iterated) {
+                if (has_max_detail) {
+                    js.renderWake();
+                }
+            } else {
+                if (!has_max_detail) {
+                    js.renderSleep();
+                }
+            }
+
+            has_max_detail = !any_iterated;
+        }
+
         if (parent_square_size < 2) {
+            any_iterated = true;
+
             parent_square_size = 2;
             state_iteration_count = 0;
 
@@ -1194,20 +1143,24 @@ const WorkCycleState = struct {
         }
 
         if (this.refresh_display.canIterate()) {
+            any_iterated = true;
+
             if (this.refresh_display.iterate(iteration_amount)) {
                 return true;
             }
         }
 
-        has_max_detail = iteration_done and state_iteration_count != 0 and display_square_size == max_square_size;
-
         if (this.update_position.canIterate()) {
+            any_iterated = true;
+
             if (this.update_position.iterate(iteration_amount)) {
                 return true;
             }
         }
 
         if (this.fill_pixels.canIterate()) {
+            any_iterated = true;
+
             if (this.fill_pixels.iterate(iteration_amount)) {
                 return true;
             }
