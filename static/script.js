@@ -452,7 +452,7 @@ function renderLoopInit() {
 
     const loop = () => {
         if (!imageDirty) {
-            console.log("done rendering.");
+            // console.log("done rendering.");
             return;
         }
 
@@ -527,7 +527,7 @@ function renderLoopInit() {
     const beginRenderLoop = () => {
         lastFrameTime = performance.now();
 
-        console.log("rendering...");
+        // console.log("rendering...");
 
         requestAnimationFrame(loop);
     };

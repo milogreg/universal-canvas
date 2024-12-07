@@ -95,8 +95,6 @@ fn jsPrint(comptime fmt: []const u8, args: anytype) void {
     js.printString(to_print.ptr, to_print.len);
 }
 
-var quadrant_offset_digits: [4]render.DigitArrayManaged = undefined;
-
 var offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
 
 var state_tree: render.StateStems = undefined;
@@ -364,36 +362,32 @@ const ClientPosition = struct {
 };
 
 fn appendDigit(digit: u2) void {
-    const starting_len = quadrant_offset_digits[0].array.length;
-
     var new_offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
 
-    for (&quadrant_offset_digits, &new_offset_initial_states, 0..) |*offset_digits, *new_initial_state, i| {
+    for (&new_offset_initial_states, 0..) |*new_initial_state, i| {
         if (i & 1 == 1) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
 
         if (i >> 1 == 1) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
 
-        offset_digits.resize(starting_len + 1) catch @panic("OOM");
-
-        offset_digits.array.set(starting_len, digit);
+        state_tree.appendDigit(i, digit) catch @panic("OOM");
 
         if (i & 1 == 1) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
         if (i >> 1 == 1) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
 
-        const last_digit = offset_digits.array.get(offset_digits.array.length - 1);
+        const last_digit = state_tree.quadrant_digits[i].get(state_tree.quadrant_digits[i].length - 1);
 
         const parent_digit = i & digit;
 
         if (offset_initial_states[parent_digit]) |initial_state| {
-            const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(offset_digits.array, 0, 0, 0);
+            const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0);
 
             new_initial_state.* = initial_state.iterate(last_digit, virtual_digit_array);
         }
@@ -403,24 +397,22 @@ fn appendDigit(digit: u2) void {
 }
 
 fn removeDigit() void {
-    const starting_len = quadrant_offset_digits[0].array.length;
-
-    for (&quadrant_offset_digits, 0..) |*offset_digits, i| {
+    for (0..4) |i| {
         if (i & 1 == 1) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
 
         if (i >> 1 == 1) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
 
-        offset_digits.resize(starting_len - 1) catch @panic("OOM");
+        state_tree.removeDigit(i);
 
         if (i & 1 == 1) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
         if (i >> 1 == 1) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
     }
 
@@ -428,12 +420,12 @@ fn removeDigit() void {
 }
 
 fn digitIncrement(digit: u2) void {
-    for (&quadrant_offset_digits) |*offset_digits| {
+    for (0..4) |i| {
         if (digit & 1 == 1) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
         if (digit >> 1 == 1) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
     }
 
@@ -441,45 +433,41 @@ fn digitIncrement(digit: u2) void {
 }
 
 fn digitIncrementAndAppend(increment_digit: u2, append_digit: u2) void {
-    const starting_len = quadrant_offset_digits[0].array.length;
-
     var new_offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
 
-    for (&quadrant_offset_digits, &new_offset_initial_states, 0..) |*offset_digits, *new_initial_state, i| {
+    for (&new_offset_initial_states, 0..) |*new_initial_state, i| {
         if (i & 1 == 1 and increment_digit & 1 == 0) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
 
         if (i & 1 == 0 and increment_digit & 1 == 1) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
 
         if (i >> 1 == 1 and increment_digit >> 1 == 0) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
 
         if (i >> 1 == 0 and increment_digit >> 1 == 1) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
 
-        offset_digits.resize(starting_len + 1) catch @panic("OOM");
-
-        offset_digits.array.set(starting_len, append_digit);
+        state_tree.appendDigit(i, append_digit) catch @panic("OOM");
 
         if (i & 1 == 1) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
         if (i >> 1 == 1) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
 
-        const last_digit = offset_digits.array.get(offset_digits.array.length - 1);
+        const last_digit = state_tree.quadrant_digits[i].get(state_tree.quadrant_digits[i].length - 1);
 
         const parent_digit = @as(usize, increment_digit) + @as(usize, i & append_digit);
 
         if (parent_digit < 4) {
             if (offset_initial_states[parent_digit]) |initial_state| {
-                const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(offset_digits.array, 0, 0, 0);
+                const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0);
 
                 var new_initial_state_non_opt: render.SelfConsumingReaderState = undefined;
 
@@ -494,33 +482,31 @@ fn digitIncrementAndAppend(increment_digit: u2, append_digit: u2) void {
 }
 
 fn removeDigitAndDecrement(decrement_digit: u2) void {
-    const starting_len = quadrant_offset_digits[0].array.length;
-
-    for (&quadrant_offset_digits, 0..) |*offset_digits, i| {
+    for (0..4) |i| {
         if (i & 1 == 1) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
 
         if (i >> 1 == 1) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
 
-        offset_digits.resize(starting_len - 1) catch @panic("OOM");
+        state_tree.removeDigit(i);
 
         if (i & 1 == 1 and decrement_digit & 1 == 0) {
-            offset_digits.array.incrementX();
+            state_tree.incrementX(i);
         }
 
         if (i & 1 == 0 and decrement_digit & 1 == 1) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
 
         if (i >> 1 == 1 and decrement_digit >> 1 == 0) {
-            offset_digits.array.incrementY();
+            state_tree.incrementY(i);
         }
 
         if (i >> 1 == 0 and decrement_digit >> 1 == 1) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
     }
 
@@ -528,12 +514,12 @@ fn removeDigitAndDecrement(decrement_digit: u2) void {
 }
 
 fn digitDecrement(digit: u2) void {
-    for (&quadrant_offset_digits) |*offset_digits| {
+    for (0..4) |i| {
         if (digit & 1 == 1) {
-            offset_digits.array.decrementX();
+            state_tree.decrementX(i);
         }
         if (digit >> 1 == 1) {
-            offset_digits.array.decrementY();
+            state_tree.decrementY(i);
         }
     }
 
@@ -587,18 +573,18 @@ export fn resizeViewport(canvas_width: usize, canvas_height: usize) void {
     backup_client.updateDimensions(canvas_width, canvas_height);
 }
 
-fn printDigits() void {
-    var list = std.ArrayList(u2).init(allocator);
-    defer list.deinit();
+// fn printDigits() void {
+//     var list = std.ArrayList(u2).init(allocator);
+//     defer list.deinit();
 
-    for (0..quadrant_offset_digits[0].array.length) |i| {
-        const digit = quadrant_offset_digits[0].array.get(i);
+//     for (0..quadrant_offset_digits[0].array.length) |i| {
+//         const digit = quadrant_offset_digits[0].array.get(i);
 
-        list.append(digit) catch @panic("OOM");
-    }
+//         list.append(digit) catch @panic("OOM");
+//     }
 
-    jsPrint("digits: {any}", .{list.items});
-}
+//     jsPrint("digits: {any}", .{list.items});
+// }
 
 const WorkCycleState = struct {
     update_position: UpdatePosition,
@@ -620,21 +606,20 @@ const WorkCycleState = struct {
         pub fn iterate(this: *UpdatePosition, iteration_amount: usize) bool {
             _ = this; // autofix
             _ = iteration_amount; // autofix
-            const at_min_edge_y = quadrant_offset_digits[0].array.isMinY();
-            const at_min_edge_x = quadrant_offset_digits[0].array.isMinX();
+
+            const at_min_edge_y = state_tree.quadrant_digits[0].isMinY();
+            const at_min_edge_x = state_tree.quadrant_digits[0].isMinX();
 
             backup_client.at_max_border_x = at_min_edge_x;
             backup_client.at_max_border_y = at_min_edge_y;
 
-            const at_edge_y = quadrant_offset_digits[3].array.isMaxY();
-            const at_edge_x = quadrant_offset_digits[3].array.isMaxX();
+            const at_edge_y = state_tree.quadrant_digits[3].isMaxY();
+            const at_edge_x = state_tree.quadrant_digits[3].isMaxX();
 
             backup_client.at_min_border_x = at_edge_x;
             backup_client.at_min_border_y = at_edge_y;
 
-            if (!backup_client.inBounds() and quadrant_offset_digits[0].array.length > 1) {
-                //  and quadrant_offset_digits[0].array.length > 1
-
+            if (!backup_client.inBounds() and state_tree.quadrant_digits[0].length > 1) {
                 const movement_unit = @as(f64, @floatFromInt(backup_client.canvas_width)) * 0.5 * backup_client.zoom;
 
                 var increment_digit: u2 = 0;
@@ -690,15 +675,15 @@ const WorkCycleState = struct {
                 if (increment_digit == 0 and decrement_digit == 0) {
                     var additional_decrement: u2 = 0;
 
-                    if (quadrant_offset_digits[0].array.isMaxXBelow(quadrant_offset_digits[0].array.length - 1)) {
+                    if (state_tree.quadrant_digits[0].isMaxXBelow(state_tree.quadrant_digits[0].length - 1)) {
                         additional_decrement |= 0b01;
                     }
 
-                    if (quadrant_offset_digits[0].array.isMaxYBelow(quadrant_offset_digits[0].array.length - 1)) {
+                    if (state_tree.quadrant_digits[0].isMaxYBelow(state_tree.quadrant_digits[0].length - 1)) {
                         additional_decrement |= 0b10;
                     }
 
-                    const last_digit = quadrant_offset_digits[0].array.get(quadrant_offset_digits[0].array.length - 1);
+                    const last_digit = state_tree.quadrant_digits[0].get(state_tree.quadrant_digits[0].length - 1);
 
                     backup_client.removeDigit(last_digit);
                     backup_client.digitDecrement(additional_decrement);
@@ -731,11 +716,11 @@ const WorkCycleState = struct {
                         digitIncrementAndAppend(@intCast(increment_digit), @intCast(append_digit));
 
                         {
-                            test_client.at_max_border_x = quadrant_offset_digits[0].array.isMinX();
-                            test_client.at_max_border_y = quadrant_offset_digits[0].array.isMinY();
+                            test_client.at_max_border_x = state_tree.quadrant_digits[0].isMinX();
+                            test_client.at_max_border_y = state_tree.quadrant_digits[0].isMinY();
 
-                            test_client.at_min_border_x = quadrant_offset_digits[3].array.isMaxX();
-                            test_client.at_min_border_y = quadrant_offset_digits[3].array.isMaxY();
+                            test_client.at_min_border_x = state_tree.quadrant_digits[3].isMaxX();
+                            test_client.at_min_border_y = state_tree.quadrant_digits[3].isMaxY();
                         }
 
                         if (test_client.inBounds()) {
@@ -865,10 +850,18 @@ const WorkCycleState = struct {
                     if (offset_initial_states[i] == null) {
                         const start_time = js.getTime();
 
-                        const initial_state = state_tree.traverseFromRoot(
-                            render.VirtualDigitArray.fromDigitArray(quadrant_offset_digits[i].array, 0, 0, 0),
-                            quadrant_offset_digits[i].array.length,
-                        ) catch @panic("OOM");
+                        const initial_state = state_tree.stateAt(i, state_tree.quadrant_digits[i].length - 1) catch @panic("OOM");
+
+                        // const tester = render.stateFromDigits(
+                        //     render.SelfConsumingReaderState.init(0, root_color),
+                        //     state_tree.quadrant_digits[i],
+                        //     state_tree.quadrant_digits[i].length,
+                        // );
+
+                        // if (initial_state.color != tester.color) {
+                        //     jsPrint("MISMATCH: {} {}", .{ initial_state.color, tester.color });
+                        //     @panic("");
+                        // }
 
                         const end_time = js.getTime();
 
@@ -887,7 +880,7 @@ const WorkCycleState = struct {
                         iteration_states[i] = render.FillIterationState.init(
                             allocator,
                             sub_square_size,
-                            quadrant_offset_digits[i].array,
+                            state_tree.quadrant_digits[i],
                             initial_state,
                             color_chunks,
                         ) catch @panic("OOM");
@@ -904,7 +897,7 @@ const WorkCycleState = struct {
 
                         iteration_states[i].?.reset(
                             sub_square_size,
-                            quadrant_offset_digits[i].array,
+                            state_tree.quadrant_digits[i],
                             initial_state,
                             color_chunks,
                         ) catch @panic("OOM");
@@ -1171,11 +1164,6 @@ export fn workCycle() bool {
 export fn init() void {
     state_tree = render.StateStems.init(allocator, root_color) catch @panic("OOM");
 
-    for (&quadrant_offset_digits, 0..) |*offset_digits, i| {
-        offset_digits.* = render.DigitArrayManaged.init(allocator, 1) catch @panic("OOM");
-        offset_digits.array.set(0, @intCast(i));
-    }
-
     const square_size = 256;
 
     const starting_colors = allocator.alloc(render.Color, square_size * square_size) catch @panic("OOM");
@@ -1256,116 +1244,24 @@ export fn init() void {
         // };
     }
 
-    if (true) return;
+    // for (0..4) |i| {
+    //     state_tree.appendDigit(i, 0) catch @panic("OOM");
+    // }
+
+    // for (0..10000) |_| {
+    //     for (0..4) |i| {
+    //         state_tree.appendDigit(i, 3) catch @panic("OOM");
+    //     }
+    // }
 
     // const color_file = @embedFile("output_image_small.bin");
     // @memcpy(std.mem.sliceAsBytes(starting_colors), color_file);
 
-    for (0..square_size) |y| {
-        for (0..square_size) |x| {
-            const idx = y * square_size + x;
+    // var enc = render.encodeColors(allocator, starting_colors) catch @panic("OOM");
+    // defer enc.deinit(allocator);
 
-            if (((y / 50) ^ (x / 50)) & 1 == 0) {
-                // starting_colors[idx] = .{
-                //     .r = 58,
-                //     .g = 42,
-                //     .b = 32,
-                //     .a = 255,
-                // };
-
-                starting_colors[idx] = .{
-                    .r = 0,
-                    .g = 0,
-                    .b = 0,
-                    .a = 255,
-                };
-            } else {
-                starting_colors[idx] = .{
-                    .r = 127,
-                    .g = 127,
-                    .b = 127,
-                    .a = 255,
-                };
-            }
-        }
-    }
-
-    var enc = render.encodeColors(allocator, starting_colors) catch @panic("OOM");
-    defer enc.deinit(allocator);
-
-    // enc.set(0, 0);
-
-    // for (1..enc.length) |i| {
-    //     enc.set(i, 3);
-    // }
-
-    const ending_digits = [_]u2{0};
-
-    const first_offset_digits = allocator.alloc(u2, enc.length + ending_digits.len) catch @panic("OOM");
-
-    for (first_offset_digits[0..enc.length], 0..) |*digit, i| {
-        digit.* = enc.get(i);
-    }
-    first_offset_digits[enc.length..][0..ending_digits.len].* = ending_digits;
-
-    var temp_quadrant_offset_digits: [4][]u2 = undefined;
-
-    temp_quadrant_offset_digits[0] = first_offset_digits;
-
-    for (temp_quadrant_offset_digits[1..], 1..) |*offset_digits, i| {
-        offset_digits.* = allocator.alloc(u2, temp_quadrant_offset_digits[0].len) catch @panic("OOM");
-        @memcpy(offset_digits.*, temp_quadrant_offset_digits[0]);
-
-        if (i & 1 == 1) {
-            incrementDigitsX(offset_digits.*);
-        }
-
-        if (i >> 1 == 1) {
-            incrementDigitsY(offset_digits.*);
-        }
-    }
-
-    defer for (&temp_quadrant_offset_digits) |offset_digits| {
-        allocator.free(offset_digits);
-    };
-
-    for (&quadrant_offset_digits) |*offset_digits| {
-        offset_digits.deinit();
-    }
-
-    for (&temp_quadrant_offset_digits, &quadrant_offset_digits) |temp_offset_digits, *offset_digits| {
-        offset_digits.* = render.DigitArrayManaged.init(allocator, temp_offset_digits.len) catch @panic("OOM");
-        for (temp_offset_digits, 0..) |digit, i| {
-            offset_digits.array.set(i, digit);
-        }
-    }
-}
-
-fn incrementDigitsX(digits: []u2) void {
-    var i: usize = digits.len - 1;
-    while (true) {
-        if (digits[i] & 0b01 == 0b01) {
-            digits[i] &= 0b10;
-        } else {
-            digits[i] |= 0b01;
-            break;
-        }
-
-        i -= 1;
-    }
-}
-
-fn incrementDigitsY(digits: []u2) void {
-    var i: usize = digits.len - 1;
-    while (true) {
-        if (digits[i] & 0b10 == 0b10) {
-            digits[i] &= 0b01;
-        } else {
-            digits[i] |= 0b10;
-            break;
-        }
-
-        i -= 1;
+    for (0..4) |i| {
+        state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
     }
 }
 
@@ -1401,67 +1297,47 @@ export fn setOffset() void {
     const offset_digits_packed_count = (offset_digits_packed.len * 4) -
         ((4 - (digit_offset % 4)) % 4);
 
-    const new_offset_digits = allocator.alloc(u2, offset_digits_packed_count) catch @panic("OOM");
-    defer allocator.free(new_offset_digits);
+    state_tree.clearDigits();
 
     for (offset_digits_packed, 0..) |packed_digit, i| {
         for (0..4) |j| {
             const idx = i * 4 + j;
-            if (idx < new_offset_digits.len) {
-                new_offset_digits[i * 4 + j] = @intCast((packed_digit >> @intCast(j * 2)) & 0b11);
+            if (idx < offset_digits_packed_count) {
+                // new_offset_digits[i * 4 + j] = @intCast((packed_digit >> @intCast(j * 2)) & 0b11);
+                const digit: u2 = @intCast((packed_digit >> @intCast(j * 2)) & 0b11);
+                for (0..4) |quadrant| {
+                    state_tree.appendDigit(quadrant, digit) catch @panic("OOM");
+                }
             }
         }
     }
 
-    const ending_digits = [_]u2{};
+    const max_x = state_tree.quadrant_digits[0].isMaxX();
+    const max_y = state_tree.quadrant_digits[0].isMaxY();
 
-    const first_offset_digits = allocator.alloc(u2, new_offset_digits.len + ending_digits.len) catch @panic("OOM");
-
-    for (first_offset_digits[0..new_offset_digits.len], 0..) |*digit, i| {
-        digit.* = new_offset_digits[i];
-    }
-    first_offset_digits[new_offset_digits.len..][0..ending_digits.len].* = ending_digits;
-
-    var temp_quadrant_offset_digits: [4][]u2 = undefined;
-
-    temp_quadrant_offset_digits[0] = first_offset_digits;
-
-    for (temp_quadrant_offset_digits[1..], 1..) |*offset_digits, i| {
-        offset_digits.* = allocator.alloc(u2, temp_quadrant_offset_digits[0].len) catch @panic("OOM");
-        @memcpy(offset_digits.*, temp_quadrant_offset_digits[0]);
-
-        if (i & 1 == 1) {
-            incrementDigitsX(offset_digits.*);
+    for (0..4) |i| {
+        if (max_x) {
+            if (i & 1 == 0) {
+                state_tree.decrementX(i);
+            }
+        } else {
+            if (i & 1 == 1) {
+                state_tree.incrementX(i);
+            }
         }
 
-        if (i >> 1 == 1) {
-            incrementDigitsY(offset_digits.*);
-        }
-    }
-
-    defer for (&temp_quadrant_offset_digits) |offset_digits| {
-        allocator.free(offset_digits);
-    };
-
-    for (&quadrant_offset_digits) |*offset_digits| {
-        offset_digits.deinit();
-    }
-
-    for (&temp_quadrant_offset_digits, &quadrant_offset_digits) |temp_offset_digits, *offset_digits| {
-        offset_digits.* = render.DigitArrayManaged.init(allocator, temp_offset_digits.len) catch @panic("OOM");
-        for (temp_offset_digits, 0..) |digit, i| {
-            offset_digits.array.set(i, digit);
+        if (max_y) {
+            if (i >> 1 == 0) {
+                state_tree.decrementY(i);
+            }
+        } else {
+            if (i >> 1 == 1) {
+                state_tree.incrementY(i);
+            }
         }
     }
 
-    state_tree.trim(quadrant_offset_digits[0].array.length);
-
-    // state_tree.trim(&.{
-    //     quadrant_offset_digits[0].array,
-    //     quadrant_offset_digits[1].array,
-    //     quadrant_offset_digits[2].array,
-    //     quadrant_offset_digits[3].array,
-    // }) catch @panic("OOM");
+    state_tree.trim(state_tree.quadrant_digits[0].length);
 }
 
 var find_image_data: []render.Color = &.{};
@@ -1496,58 +1372,23 @@ export fn findImage() void {
 
     allocator.free(find_image_data);
 
-    // enc.set(0, 0);
-
-    // for (1..enc.length) |i| {
-    //     enc.set(i, 3);
-    // }
-
-    const ending_digits = [_]u2{0};
-
-    const first_offset_digits = allocator.alloc(u2, enc.length + ending_digits.len) catch @panic("OOM");
-
-    for (first_offset_digits[0..enc.length], 0..) |*digit, i| {
-        digit.* = enc.get(i);
-    }
-    first_offset_digits[enc.length..][0..ending_digits.len].* = ending_digits;
-
-    var temp_quadrant_offset_digits: [4][]u2 = undefined;
-
-    temp_quadrant_offset_digits[0] = first_offset_digits;
-
-    for (temp_quadrant_offset_digits[1..], 1..) |*offset_digits, i| {
-        offset_digits.* = allocator.alloc(u2, temp_quadrant_offset_digits[0].len) catch @panic("OOM");
-        @memcpy(offset_digits.*, temp_quadrant_offset_digits[0]);
-
-        if (i & 1 == 1) {
-            incrementDigitsX(offset_digits.*);
-        }
-
-        if (i >> 1 == 1) {
-            incrementDigitsY(offset_digits.*);
+    state_tree.clearDigits();
+    for (0..enc.length) |i| {
+        const digit = enc.get(i);
+        for (0..4) |j| {
+            state_tree.appendDigit(j, digit) catch @panic("OOM");
         }
     }
 
-    defer for (&temp_quadrant_offset_digits) |offset_digits| {
-        allocator.free(offset_digits);
-    };
-
-    for (&quadrant_offset_digits) |*offset_digits| {
-        offset_digits.deinit();
+    for (0..4) |i| {
+        state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
     }
 
-    for (&temp_quadrant_offset_digits, &quadrant_offset_digits) |temp_offset_digits, *offset_digits| {
-        offset_digits.* = render.DigitArrayManaged.init(allocator, temp_offset_digits.len) catch @panic("OOM");
-        for (temp_offset_digits, 0..) |digit, i| {
-            offset_digits.array.set(i, digit);
-        }
-    }
-
-    state_tree.trim(quadrant_offset_digits[0].array.length);
+    state_tree.trim(state_tree.quadrant_digits[0].length);
 }
 
 export fn getOffsetAlloc() [*]u8 {
-    offset_digits_packed_with_digit_offset = allocator.alloc(u8, ((quadrant_offset_digits[0].array.length + 3) / 4) + 1) catch @panic("OOM");
+    offset_digits_packed_with_digit_offset = allocator.alloc(u8, ((state_tree.quadrant_digits[0].length + 3) / 4) + 1) catch @panic("OOM");
     offset_digits_packed = offset_digits_packed_with_digit_offset[0 .. offset_digits_packed_with_digit_offset.len - 1];
 
     for (offset_digits_packed, 0..) |*packed_digit, i| {
@@ -1555,14 +1396,14 @@ export fn getOffsetAlloc() [*]u8 {
         for (0..4) |j| {
             // const idx = ((i + 1) * 4 - j - 1);
             const idx = i * 4 + j;
-            if (idx < quadrant_offset_digits[0].array.length) {
-                const offset_digit = quadrant_offset_digits[0].array.get(idx);
+            if (idx < state_tree.quadrant_digits[0].length) {
+                const offset_digit = state_tree.quadrant_digits[0].get(idx);
                 packed_digit.* |= @as(u8, offset_digit) << @intCast(j * 2);
             }
         }
     }
 
-    offset_digits_packed_with_digit_offset[offset_digits_packed_with_digit_offset.len - 1] = @intCast(quadrant_offset_digits[0].array.length % 4);
+    offset_digits_packed_with_digit_offset[offset_digits_packed_with_digit_offset.len - 1] = @intCast(state_tree.quadrant_digits[0].length % 4);
 
     return offset_digits_packed_with_digit_offset.ptr;
 }
