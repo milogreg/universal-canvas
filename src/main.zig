@@ -27,9 +27,6 @@ const js = struct {
         updated_pixels: bool,
         max_detail: bool,
     ) void;
-
-    extern fn renderSleep() void;
-    extern fn renderWake() void;
 };
 
 pub const Panic = struct {
@@ -188,30 +185,8 @@ const ClientPosition = struct {
 
     pub fn updatePosition(this: *ClientPosition, mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
         this.zoom *= zoom_delta;
-
-        // if (this.zoom < 1) {
-        //     this.zoom = 1;
-        // }
-
-        const maxOffsetX = 0;
-        _ = maxOffsetX; // autofix
-        const maxOffsetY = 0;
-        _ = maxOffsetY; // autofix
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * this.zoom + @as(f64, @floatFromInt(this.canvas_width));
-        _ = min_offset_x; // autofix
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * this.zoom + @as(f64, @floatFromInt(this.canvas_height));
-        _ = min_offset_y; // autofix
-
         this.offset_x = mouse_x - (mouse_x - this.offset_x) * zoom_delta;
-
-        // this.offset_x = @max(this.offset_x, minOffsetX);
-        // this.offset_x = @min(this.offset_x, maxOffsetX);
-
         this.offset_y = mouse_y - (mouse_y - this.offset_y) * zoom_delta;
-
-        // this.offset_y = @max(this.offset_y, minOffsetY);
-        // this.offset_y = @min(this.offset_y, maxOffsetY);
     }
 
     pub fn move(this: *ClientPosition, offset_x: f64, offset_y: f64) void {
@@ -1055,6 +1030,8 @@ const WorkCycleState = struct {
             }
 
             updated_pixels = true;
+
+            renderPixels();
         }
 
         pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
@@ -1117,25 +1094,7 @@ const WorkCycleState = struct {
     };
 
     pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
-        var any_iterated = false;
-
-        defer {
-            if (any_iterated) {
-                if (has_max_detail) {
-                    js.renderWake();
-                    has_max_detail = false;
-                }
-            } else {
-                if (!has_max_detail and !updated_pixels) {
-                    js.renderSleep();
-                    has_max_detail = true;
-                }
-            }
-        }
-
         if (parent_square_size < 2) {
-            any_iterated = true;
-
             parent_square_size = 2;
             state_iteration_count = 0;
 
@@ -1143,24 +1102,18 @@ const WorkCycleState = struct {
         }
 
         if (this.refresh_display.canIterate()) {
-            any_iterated = true;
-
             if (this.refresh_display.iterate(iteration_amount)) {
                 return true;
             }
         }
 
         if (this.update_position.canIterate()) {
-            any_iterated = true;
-
             if (this.update_position.iterate(iteration_amount)) {
                 return true;
             }
         }
 
         if (this.fill_pixels.canIterate()) {
-            any_iterated = true;
-
             if (this.fill_pixels.iterate(iteration_amount)) {
                 return true;
             }

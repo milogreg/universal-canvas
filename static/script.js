@@ -1,5 +1,44 @@
 "use strict";
 
+class ClientPosition {
+    constructor(zoom, offsetX, offsetY, canvasWidth, canvasHeight) {
+        this.zoom = zoom;
+        this.offsetX = offsetX;
+        this.offsetY = offsetY;
+        this.canvasWidth = canvasWidth;
+        this.canvasHeight = canvasHeight;
+    }
+
+    updatePosition(mouseX, mouseY, zoomDelta) {
+        this.zoom *= zoomDelta;
+        this.offsetX = mouseX - (mouseX - this.offsetX) * zoomDelta;
+        this.offsetY = mouseY - (mouseY - this.offsetY) * zoomDelta;
+    }
+
+    move(offsetX, offsetY) {
+        this.offsetX += offsetX;
+        this.offsetY += offsetY;
+    }
+
+    updateDimensions(canvasWidth, canvasHeight) {
+        if (
+            this.canvasWidth === canvasWidth &&
+            this.canvasHeight === canvasHeight
+        ) {
+            return;
+        }
+
+        this.offsetX /= this.canvasWidth;
+        this.offsetY /= this.canvasHeight;
+
+        this.canvasWidth = canvasWidth;
+        this.canvasHeight = canvasHeight;
+
+        this.offsetX *= this.canvasWidth;
+        this.offsetY *= this.canvasHeight;
+    }
+}
+
 const canvasContainer = document.getElementById("canvas-container");
 
 const displayCanvas = document.getElementById("display-canvas");
@@ -30,6 +69,9 @@ let loading = true;
 
 let imageDirty = true;
 
+let cachedPosition = new ClientPosition(1, 0, 0, 1, 1);
+let oldCachedPosition = new ClientPosition(1, 0, 0, 1, 1);
+
 // Create an observer to track changes in the canvas's client width and height
 const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
@@ -39,6 +81,9 @@ const observer = new ResizeObserver((entries) => {
         canvasContainer.height = clientHeight;
 
         // renderImageFromCache();
+
+        cachedPosition.updateDimensions(clientWidth, clientHeight);
+        oldCachedPosition.updateDimensions(clientWidth, clientHeight);
 
         renderWake();
 
@@ -55,7 +100,9 @@ const observer = new ResizeObserver((entries) => {
 // Observe the canvas element
 observer.observe(canvasContainer);
 
-async function renderImage(
+let pushCache;
+
+function renderImage(
     data,
     offsetX,
     offsetY,
@@ -68,6 +115,65 @@ async function renderImage(
 
     maxDetail
 ) {
+    if (!pushCache) {
+        pushCache = {};
+    }
+
+    if (data) {
+        if (pushCache.data) {
+            pushCache.data.close();
+        }
+        pushCache.data = data;
+
+        cachedPosition = new ClientPosition(
+            zoom,
+            offsetX,
+            offsetY,
+            canvasContainer.width,
+            canvasContainer.height
+        );
+    }
+
+    if (oldData) {
+        if (pushCache.oldData) {
+            pushCache.oldData.close();
+        }
+        pushCache.oldData = oldData;
+
+        oldCachedPosition = new ClientPosition(
+            oldZoom,
+            oldOffsetX,
+            oldOffsetY,
+            canvasContainer.width,
+            canvasContainer.height
+        );
+    }
+
+    renderWake();
+}
+
+const observe1 = new PerformanceObserver((list) => {
+    console.log(list.getEntries());
+});
+
+observe1.observe({ type: "long-animation-frame", buffered: true });
+
+function pushImage() {
+    let data, offsetX, offsetY, zoom, oldData, oldOffsetX, oldOffsetY, oldZoom;
+    if (pushCache) {
+        data = pushCache.data;
+        oldData = pushCache.oldData;
+        pushCache = undefined;
+    }
+
+    offsetX = cachedPosition.offsetX;
+    offsetY = cachedPosition.offsetY;
+    zoom = cachedPosition.zoom;
+
+    oldOffsetX = oldCachedPosition.offsetX;
+    oldOffsetY = oldCachedPosition.offsetY;
+    oldZoom = oldCachedPosition.zoom;
+
     if (loading) {
         if (!data) {
             return;
@@ -76,6 +182,7 @@ async function renderImage(
         loading = false;
         canvasFadeIn();
     }
+    const startTime = performance.now();
 
     if (data) {
         displayCtx.transferFromImageBitmap(data);
@@ -84,6 +191,12 @@ async function renderImage(
 
     transformCanvas(displayCanvas, offsetX, offsetY, zoom);
     transformCanvas(oldDisplayCanvas, oldOffsetX, oldOffsetY, oldZoom);
+
+    const endTime = performance.now();
+    const totalTime = endTime - startTime;
+    if (totalTime > 3) {
+        console.log("render time:", totalTime);
+    }
 }
 
 function transformCanvas(toTransform, offsetX, offsetY, zoom) {
@@ -251,18 +364,6 @@ worker.onmessage = async function (e) {
             }
         }
 
-        case "renderSleep": {
-            imageDirty = false;
-
-            break;
-        }
-
-        case "renderWake": {
-            renderWake();
-
-            break;
-        }
-
         case "zoomViewportComplete": {
             break;
         }
@@ -304,13 +405,9 @@ function renderLoopInit() {
         isMouseDown = false;
     };
 
-    const drags = [];
-
     const pressedKeys = {};
 
     let clickZoomEnabled = clickZoomToggle.checked;
-
-    // canvas.addEventListener("mousemove", handleMouseMoveDragging);
 
     canvasContainer.addEventListener("mouseup", stopZoom);
 
@@ -353,9 +450,14 @@ function renderLoopInit() {
         }
     });
 
-    const scrolls = [];
+    const loop = () => {
+        if (!imageDirty) {
+            console.log("done rendering.");
+            return;
+        }
 
-    const loop = async () => {
+        imageDirty = false;
+
         const currentFrameTime = performance.now();
         const deltaTime = (currentFrameTime - lastFrameTime) / 1000; // Convert to seconds
         lastFrameTime = currentFrameTime;
@@ -365,57 +467,8 @@ function renderLoopInit() {
             deltaTime
         );
 
-        const scrollZoomFactor = Math.pow(
-            Math.pow(2, Math.pow(2, scrollZoomRate)),
-            0.1
-        );
-
         if (workerInitialized) {
-            if (loading) {
-                scrolls.length = 0;
-                drags.length = 0;
-            } else {
-                imageDirty =
-                    imageDirty ||
-                    (isMouseDown && clickZoomEnabled) ||
-                    scrolls.length > 0 ||
-                    drags.length > 0 ||
-                    pressedKeys["ArrowUp"] ||
-                    pressedKeys["ArrowDown"] ||
-                    pressedKeys["ArrowLeft"] ||
-                    pressedKeys["ArrowRight"];
-
-                // imageDirty = true;
-
-                if (!imageDirty) {
-                    console.log("done rendering.");
-                    return;
-                }
-
-                scrolls.forEach(async (scroll) => {
-                    worker.postMessage({
-                        type: "zoomViewport",
-                        mouseX: scroll.mouseX,
-                        mouseY: scroll.mouseY,
-                        zoomDelta:
-                            scroll.deltaY > 0
-                                ? 1 / scrollZoomFactor
-                                : scrollZoomFactor,
-                    });
-                });
-
-                scrolls.length = 0;
-
-                drags.forEach(async (drag) => {
-                    worker.postMessage({
-                        type: "moveViewport",
-                        offsetX: drag.offsetX,
-                        offsetY: drag.offsetY,
-                    });
-                });
-
-                drags.length = 0;
-
+            if (!loading) {
                 if (isMouseDown && clickZoomEnabled) {
                     worker.postMessage({
                         type: "zoomViewport",
@@ -423,6 +476,13 @@ function renderLoopInit() {
                         mouseY: mouseY,
                         zoomDelta: zoomFactor,
                     });
+                    cachedPosition.updatePosition(mouseX, mouseY, zoomFactor);
+                    oldCachedPosition.updatePosition(
+                        mouseX,
+                        mouseY,
+                        zoomFactor
+                    );
+                    imageDirty = true;
                 }
 
                 if (
@@ -452,12 +512,13 @@ function renderLoopInit() {
                         offsetX,
                         offsetY,
                     });
+                    cachedPosition.move(offsetX, offsetY);
+                    oldCachedPosition.move(offsetX, offsetY);
+                    imageDirty = true;
                 }
             }
 
-            worker.postMessage({
-                type: "renderImage",
-            });
+            pushImage();
         }
 
         requestAnimationFrame(loop);
@@ -481,11 +542,28 @@ function renderLoopInit() {
     canvasContainer.addEventListener("wheel", async (event) => {
         event.preventDefault();
 
-        scrolls.push({
+        const scrollZoomFactor = Math.pow(
+            Math.pow(2, Math.pow(2, scrollZoomRate)),
+            0.1
+        );
+
+        worker.postMessage({
+            type: "zoomViewport",
             mouseX: event.offsetX,
             mouseY: event.offsetY,
-            deltaY: event.deltaY,
+            zoomDelta:
+                event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor,
         });
+        cachedPosition.updatePosition(
+            event.offsetX,
+            event.offsetY,
+            event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
+        );
+        oldCachedPosition.updatePosition(
+            event.offsetX,
+            event.offsetY,
+            event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
+        );
 
         wake();
     });
@@ -512,10 +590,13 @@ function renderLoopInit() {
 
     async function handleMouseMoveDragging(event) {
         if ((event.buttons & 1) == 1 && !clickZoomEnabled) {
-            drags.push({
+            worker.postMessage({
+                type: "moveViewport",
                 offsetX: event.movementX,
                 offsetY: event.movementY,
             });
+            cachedPosition.move(event.movementX, event.movementY);
+            oldCachedPosition.move(event.movementX, event.movementY);
 
             wake();
         }
@@ -555,6 +636,7 @@ renderLoop();
 function renderWake() {
     if (!imageDirty) {
         imageDirty = true;
+
         renderLoop();
     }
 }

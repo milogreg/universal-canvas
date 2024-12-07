@@ -43,8 +43,8 @@ const env = {
             };
 
             const [newDataBitmap, newOldDataBitmap] = await Promise.all([
-                createImageBitmap(imageData, options),
-                createImageBitmap(oldImageData, options),
+                createImageBitmap(imageData),
+                createImageBitmap(oldImageData),
             ]);
 
             if (dataBitmap) {
@@ -125,18 +125,6 @@ const env = {
         oldDataBitmap = undefined;
     },
 
-    renderSleep: () => {
-        self.postMessage({
-            type: "renderSleep",
-        });
-    },
-
-    renderWake: () => {
-        self.postMessage({
-            type: "renderWake",
-        });
-    },
-
     printString: (ptr, len) => {
         // Create a DataView or Uint8Array to access the memory buffer
         const bytes = new Uint8Array(memory.buffer, ptr, len);
@@ -173,7 +161,7 @@ fetch("example.wasm", { headers: { "Content-Type": "application/wasm" } })
         console.error("Error loading or instantiating WASM:", error);
     });
 
-self.onmessage = async function (e) {
+self.onmessage = function (e) {
     const {
         type,
         canvasWidth,
