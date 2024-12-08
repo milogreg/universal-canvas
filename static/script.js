@@ -1,5 +1,173 @@
 "use strict";
 
+class PointerManager {
+    constructor() {
+        this.pointers = new Map();
+        this.referenceCentroid = null;
+        this.lastAverageDistance = null;
+    }
+
+    addPointer(id, x, y) {
+        this.pointers.set(id, { x, y });
+        this.updateReferenceCentroid();
+    }
+
+    updatePointer(id, x, y) {
+        if (this.pointers.has(id)) {
+            this.pointers.set(id, { x, y });
+        }
+    }
+
+    removePointer(id) {
+        this.pointers.delete(id);
+        this.updateReferenceCentroid();
+    }
+
+    getPointerCount() {
+        return this.pointers.size;
+    }
+
+    calculateCentroid() {
+        const points = Array.from(this.pointers.values());
+        const total = points.reduce(
+            (acc, point) => {
+                acc.x += point.x;
+                acc.y += point.y;
+                return acc;
+            },
+            { x: 0, y: 0 }
+        );
+        return points.length > 0
+            ? { x: total.x / points.length, y: total.y / points.length }
+            : null;
+    }
+
+    calculateAverageDistance(centroid) {
+        if (!centroid) return 0;
+        const points = Array.from(this.pointers.values());
+        const totalDistance = points.reduce((acc, point) => {
+            const deltaX = point.x - centroid.x;
+            const deltaY = point.y - centroid.y;
+            return acc + Math.sqrt(deltaX ** 2 + deltaY ** 2);
+        }, 0);
+        return points.length > 0 ? totalDistance / points.length : 0;
+    }
+
+    updateReferenceCentroid() {
+        const newCentroid = this.calculateCentroid();
+        if (this.referenceCentroid && newCentroid) {
+            const offsetX = newCentroid.x - this.referenceCentroid.x;
+            const offsetY = newCentroid.y - this.referenceCentroid.y;
+            this.referenceCentroid.x += offsetX;
+            this.referenceCentroid.y += offsetY;
+        } else {
+            this.referenceCentroid = newCentroid;
+        }
+        this.lastAverageDistance = this.calculateAverageDistance(
+            this.referenceCentroid
+        );
+    }
+
+    getOffsets(newCentroid) {
+        if (!this.referenceCentroid || !newCentroid)
+            return { offsetX: 0, offsetY: 0 };
+        return {
+            offsetX: newCentroid.x - this.referenceCentroid.x,
+            offsetY: newCentroid.y - this.referenceCentroid.y,
+        };
+    }
+
+    getScale(newCentroid) {
+        if (this.pointers.size < 2) return 1; // Return scale of 1 if there is only one pointer
+        const currentAverageDistance =
+            this.calculateAverageDistance(newCentroid);
+        const scale =
+            currentAverageDistance /
+            (this.lastAverageDistance || currentAverageDistance);
+        this.lastAverageDistance = currentAverageDistance;
+        return scale;
+    }
+}
+
+class PointerHandler {
+    constructor(element) {
+        this.element = element;
+        this.pointerManager = new PointerManager();
+
+        // Bind event handlers
+        this.handlePointerDown = this.handlePointerDown.bind(this);
+        this.handlePointerMove = this.handlePointerMove.bind(this);
+        this.handlePointerUp = this.handlePointerUp.bind(this);
+
+        // Add event listeners
+        this.element.addEventListener("pointerdown", this.handlePointerDown);
+        this.element.addEventListener("pointermove", this.handlePointerMove);
+        this.element.addEventListener("pointerup", this.handlePointerUp);
+        this.element.addEventListener("pointercancel", this.handlePointerUp);
+    }
+
+    handlePointerDown(event) {
+        this.pointerManager.addPointer(
+            event.pointerId,
+            event.clientX,
+            event.clientY
+        );
+    }
+
+    handlePointerMove(event) {
+        this.pointerManager.updatePointer(
+            event.pointerId,
+            event.clientX,
+            event.clientY
+        );
+
+        const currentCentroid = this.pointerManager.calculateCentroid();
+        const offsets = this.pointerManager.getOffsets(currentCentroid);
+
+        if (offsets.offsetX !== 0 || offsets.offsetY !== 0) {
+            this.pointerManager.referenceCentroid = currentCentroid;
+
+            const dragEvent = new CustomEvent("pointerdrag", {
+                detail: { deltaX: offsets.offsetX, deltaY: offsets.offsetY },
+            });
+            this.element.dispatchEvent(dragEvent);
+        }
+
+        const scale = Math.max(
+            0.1,
+            this.pointerManager.getScale(currentCentroid)
+        );
+
+        if (scale !== 1) {
+            const zoomEvent = new CustomEvent("pointerzoom", {
+                detail: {
+                    scale,
+                    offsetX: currentCentroid?.x || 0,
+                    offsetY: currentCentroid?.y || 0,
+                },
+            });
+            this.element.dispatchEvent(zoomEvent);
+        }
+    }
+
+    handlePointerUp(event) {
+        this.pointerManager.removePointer(event.pointerId);
+
+        if (this.pointerManager.getPointerCount() === 0) {
+            // Reset state when all pointers are lifted
+            this.pointerManager.referenceCentroid = null;
+            this.pointerManager.lastAverageDistance = null;
+        }
+    }
+
+    destroy() {
+        this.element.removeEventListener("pointerdown", this.handlePointerDown);
+        this.element.removeEventListener("pointermove", this.handlePointerMove);
+        this.element.removeEventListener("pointerup", this.handlePointerUp);
+        this.element.removeEventListener("pointercancel", this.handlePointerUp);
+    }
+}
+
 class ClientPosition {
     constructor(zoom, offsetX, offsetY, canvasWidth, canvasHeight) {
         this.zoom = zoom;
@@ -40,6 +208,226 @@ class ClientPosition {
 }
 
 const canvasContainer = document.getElementById("canvas-container");
+
+function testGestures(element) {
+    if (!(element instanceof HTMLElement)) {
+        throw new Error("Provided input is not a valid DOM element.");
+    }
+
+    const rect = element.getBoundingClientRect();
+
+    // Normalize coordinates to element size
+    function normalizeToElement(x, y) {
+        return {
+            clientX: rect.left + x * rect.width,
+            clientY: rect.top + y * rect.height,
+        };
+    }
+
+    // Pointer visual management
+    const pointerVisuals = {};
+
+    function createPointerVisual(pointerId, x, y) {
+        const visual = document.createElement("div");
+        visual.style.position = "absolute";
+        visual.style.width = "30px";
+        visual.style.height = "30px";
+        visual.style.background = `conic-gradient(from 0deg, #FFD700, #FFA500, #FFD700)`;
+        visual.style.borderRadius = "50%";
+        visual.style.boxShadow = "0 0 10px rgba(255, 223, 0, 0.6)";
+        visual.style.animation =
+            "spin 1s linear infinite, pulse-shadow 1s infinite";
+        visual.style.pointerEvents = "none";
+        visual.style.zIndex = "999999";
+        visual.style.left = `${x - 15}px`;
+        visual.style.top = `${y - 15}px`;
+        document.body.appendChild(visual);
+        pointerVisuals[pointerId] = visual;
+
+        const style = document.createElement("style");
+        style.textContent = `
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            @keyframes pulse-shadow {
+                0% { box-shadow: 0 0 10px rgba(255, 223, 0, 0.6); }
+                50% { box-shadow: 0 0 20px rgba(255, 223, 0, 1); }
+                100% { box-shadow: 0 0 10px rgba(255, 223, 0, 0.6); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function movePointerVisual(pointerId, x, y) {
+        const visual = pointerVisuals[pointerId];
+        if (visual) {
+            visual.style.left = `${x - 15}px`;
+            visual.style.top = `${y - 15}px`;
+        }
+    }
+
+    function removePointerVisual(pointerId) {
+        const visual = pointerVisuals[pointerId];
+        if (visual) {
+            visual.remove();
+            delete pointerVisuals[pointerId];
+        }
+    }
+
+    function triggerPointerEvent(type, { pointerId, x, y }, target = element) {
+        const { clientX, clientY } = normalizeToElement(x, y);
+
+        const event = new PointerEvent(type, {
+            pointerId,
+            bubbles: true,
+            cancelable: true,
+            clientX,
+            clientY,
+            isPrimary: pointerId === 1,
+            pointerType: "touch",
+        });
+        target.dispatchEvent(event);
+
+        if (type === "pointerdown") {
+            createPointerVisual(pointerId, clientX, clientY);
+        } else if (type === "pointermove") {
+            movePointerVisual(pointerId, clientX, clientY);
+        } else if (type === "pointerup" || type === "pointercancel") {
+            removePointerVisual(pointerId);
+        }
+    }
+
+    function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function gesture(startPoints, endPoints, steps = 30, duration = 500) {
+        const interval = duration / steps;
+        const pointers = Object.keys(startPoints);
+
+        pointers.forEach((pointerId) => {
+            triggerPointerEvent("pointerdown", {
+                pointerId: parseInt(pointerId, 10),
+                ...startPoints[pointerId],
+            });
+        });
+
+        for (let i = 1; i <= steps; i++) {
+            const progress = i / steps;
+            pointers.forEach((pointerId) => {
+                const start = startPoints[pointerId];
+                const end = endPoints[pointerId];
+                const currentX = start.x + (end.x - start.x) * progress;
+                const currentY = start.y + (end.y - start.y) * progress;
+                triggerPointerEvent("pointermove", {
+                    pointerId: parseInt(pointerId, 10),
+                    x: currentX,
+                    y: currentY,
+                });
+            });
+            await delay(interval);
+        }
+
+        pointers.forEach((pointerId) => {
+            triggerPointerEvent("pointerup", {
+                pointerId: parseInt(pointerId, 10),
+                ...endPoints[pointerId],
+            });
+        });
+    }
+
+    async function singleFingerDrag() {
+        console.log("Testing single finger drag...");
+        await gesture({ 1: { x: 0.1, y: 0.1 } }, { 1: { x: 0.9, y: 0.9 } });
+    }
+
+    async function twoFingerPinch() {
+        console.log("Testing two-finger pinch...");
+        await gesture(
+            {
+                1: { x: 0.3, y: 0.5 },
+                2: { x: 0.7, y: 0.5 },
+            },
+            {
+                1: { x: 0.4, y: 0.5 },
+                2: { x: 0.6, y: 0.5 },
+            }
+        );
+    }
+
+    async function fourFingerZoom() {
+        console.log("Testing four-finger zoom...");
+        await gesture(
+            {
+                1: { x: 0.2, y: 0.4 },
+                2: { x: 0.8, y: 0.4 },
+                3: { x: 0.2, y: 0.6 },
+                4: { x: 0.8, y: 0.6 },
+            },
+            {
+                1: { x: 0.4, y: 0.5 },
+                2: { x: 0.6, y: 0.5 },
+                3: { x: 0.4, y: 0.5 },
+                4: { x: 0.6, y: 0.5 },
+            }
+        );
+    }
+
+    async function threeToTwoToOneFingerGesture() {
+        console.log("Testing three-to-two-to-one finger gesture...");
+        await gesture(
+            {
+                1: { x: 0.2, y: 0.2 },
+                2: { x: 0.5, y: 0.2 },
+                3: { x: 0.8, y: 0.2 },
+            },
+            {
+                1: { x: 0.4, y: 0.5 },
+                2: { x: 0.5, y: 0.5 },
+                3: { x: 0.6, y: 0.5 },
+            }
+        );
+
+        await delay(200);
+
+        await gesture(
+            {
+                1: { x: 0.4, y: 0.5 },
+                2: { x: 0.6, y: 0.5 },
+            },
+            {
+                1: { x: 0.5, y: 0.5 },
+                2: { x: 0.5, y: 0.5 },
+            }
+        );
+
+        await delay(200);
+
+        await gesture(
+            {
+                1: { x: 0.5, y: 0.5 },
+            },
+            {
+                1: { x: 0.9, y: 0.9 },
+            }
+        );
+    }
+
+    // Execute all gestures
+    (async () => {
+        // await singleFingerDrag();
+        await twoFingerPinch();
+        // await fourFingerZoom();
+        // await threeToTwoToOneFingerGesture();
+    })();
+}
+
+// document.addEventListener("keydown", function (event) {
+//     if (event.code === "Space") {
+//         testGestures(canvasContainer);
+//     }
+// });
 
 const displayCanvas = document.getElementById("display-canvas");
 displayCanvas.width = 2048;
@@ -385,6 +773,8 @@ worker.onmessage = async function (e) {
     }
 };
 
+const pointerHandler = new PointerHandler(canvasContainer);
+
 function renderLoopInit() {
     let lastFrameTime = performance.now();
     let isMouseDown = false;
@@ -422,6 +812,8 @@ function renderLoopInit() {
         event.preventDefault();
         setTouchPosition(event);
     });
+
+    canvasContainer.addEventListener("pointerdrag", handlePointerDrag);
 
     let zoomRate =
         parseFloat(document.getElementById("zoom-rate-input").value) || 4;
@@ -568,6 +960,33 @@ function renderLoopInit() {
         wake();
     });
 
+    canvasContainer.addEventListener("pointerzoom", async (event) => {
+        event.preventDefault();
+
+        event = event.detail;
+
+        const scrollZoomFactor = event.scale;
+
+        worker.postMessage({
+            type: "zoomViewport",
+            mouseX: event.offsetX,
+            mouseY: event.offsetY,
+            zoomDelta: scrollZoomFactor,
+        });
+        cachedPosition.updatePosition(
+            event.offsetX,
+            event.offsetY,
+            scrollZoomFactor
+        );
+        oldCachedPosition.updatePosition(
+            event.offsetX,
+            event.offsetY,
+            scrollZoomFactor
+        );
+
+        wake();
+    });
+
     document.addEventListener("keydown", (event) => {
         const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
         if (arrowKeys.includes(event.key)) {
@@ -588,15 +1007,16 @@ function renderLoopInit() {
         }
     });
 
-    async function handleMouseMoveDragging(event) {
-        if ((event.buttons & 1) == 1 && !clickZoomEnabled) {
+    async function handlePointerDrag(event) {
+        event = event.detail;
+        if (!clickZoomEnabled) {
             worker.postMessage({
                 type: "moveViewport",
-                offsetX: event.movementX,
-                offsetY: event.movementY,
+                offsetX: event.deltaX,
+                offsetY: event.deltaY,
             });
-            cachedPosition.move(event.movementX, event.movementY);
-            oldCachedPosition.move(event.movementX, event.movementY);
+            cachedPosition.move(event.deltaX, event.deltaY);
+            oldCachedPosition.move(event.deltaX, event.deltaY);
 
             wake();
         }
@@ -625,7 +1045,6 @@ function renderLoopInit() {
     });
 
     canvasContainer.addEventListener("mousedown", startZoom);
-    canvasContainer.addEventListener("mousemove", handleMouseMoveDragging);
 
     return beginRenderLoop;
 }
