@@ -2175,26 +2175,17 @@ pub fn encodeColors(allocator: std.mem.Allocator, colors: []const Color) !DigitA
 
     const chunks = try allocator.alloc([]const Color, chunk_count);
     defer allocator.free(chunks);
-    defer {
-        // bad practice, remove later
-        for (chunks) |chunk| {
-            if (chunk.len != colors.len) {
-                allocator.free(chunk);
-            }
-        }
-    }
 
-    const altered_colors = try allocator.alloc(Color, colors.len);
-    @memcpy(altered_colors, colors);
-
-    chunks[0] = altered_colors;
+    chunks[0] = colors;
     for (chunks[1..], 0..) |*chunk, i| {
         const prev_chunk = chunks[i];
         chunk.* = try averageColors(allocator, prev_chunk);
     }
 
     defer for (chunks) |chunk| {
-        allocator.free(chunk);
+        if (chunk.len != colors.len) {
+            allocator.free(chunk);
+        }
     };
 
     std.mem.reverse([]const Color, chunks);
@@ -2323,28 +2314,6 @@ pub fn encodeColors(allocator: std.mem.Allocator, colors: []const Color) !DigitA
             },
             chunks[0][0],
         );
-    }
-
-    const padded_digits = try DigitArray.init(allocator, digits.length * 2);
-    defer padded_digits.deinit(allocator);
-
-    {
-        var padded_digit_idx: usize = 0;
-
-        for (color_find_digits.items) |digit| {
-            padded_digits.set(padded_digit_idx, digit);
-            padded_digit_idx += 1;
-        }
-
-        for (0..digits.length) |i| {
-            padded_digits.set(padded_digit_idx, digits.get(i));
-            padded_digit_idx += 1;
-        }
-
-        for (digits.length..padded_digits.length) |i| {
-            padded_digits.set(i, 3);
-            padded_digit_idx += 1;
-        }
     }
 
     var starting_command_digits = std.ArrayList(u2).init(allocator);
