@@ -78,7 +78,7 @@ class PointerManager {
     }
 
     getScale(newCentroid) {
-        if (this.pointers.size < 2) return 1; // Return scale of 1 if there is only one pointer
+        if (this.pointers.size < 2) return 1;
         const currentAverageDistance =
             this.calculateAverageDistance(newCentroid);
         const scale =
@@ -90,14 +90,23 @@ class PointerManager {
 }
 
 class PointerHandler {
-    constructor(element) {
+    constructor(element, friction = 0.99) {
         this.element = element;
         this.pointerManager = new PointerManager();
+
+        this.friction = friction;
+        this.dragVelocityX = 0;
+        this.dragVelocityY = 0;
+        this.scaleVelocity = 0;
+        this.momentumActive = false;
+
+        this.velocityHistory = [];
 
         // Bind event handlers
         this.handlePointerDown = this.handlePointerDown.bind(this);
         this.handlePointerMove = this.handlePointerMove.bind(this);
         this.handlePointerUp = this.handlePointerUp.bind(this);
+        this.momentumTick = this.momentumTick.bind(this);
 
         // Add event listeners
         this.element.addEventListener("pointerdown", this.handlePointerDown);
@@ -112,6 +121,7 @@ class PointerHandler {
             event.clientX,
             event.clientY
         );
+        this.stopMomentum();
     }
 
     handlePointerMove(event) {
@@ -123,40 +133,184 @@ class PointerHandler {
 
         const currentCentroid = this.pointerManager.calculateCentroid();
         const offsets = this.pointerManager.getOffsets(currentCentroid);
-
-        if (offsets.offsetX !== 0 || offsets.offsetY !== 0) {
-            this.pointerManager.referenceCentroid = currentCentroid;
-
-            const dragEvent = new CustomEvent("pointerdrag", {
-                detail: { deltaX: offsets.offsetX, deltaY: offsets.offsetY },
-            });
-            this.element.dispatchEvent(dragEvent);
-        }
-
         const scale = Math.max(
             0.1,
             this.pointerManager.getScale(currentCentroid)
         );
 
-        if (scale !== 1) {
+        let totalDeltaX = 0;
+        let totalDeltaY = 0;
+        let totalDeltaScale = 0;
+
+        if (
+            (offsets.offsetX !== 0 || offsets.offsetY !== 0) &&
+            currentCentroid
+        ) {
+            this.pointerManager.referenceCentroid = currentCentroid;
+
+            totalDeltaX += offsets.offsetX;
+            totalDeltaY += offsets.offsetY;
+        }
+
+        if (scale !== 1 && currentCentroid) {
+            const deltaX = (currentCentroid.x || 0) * (1 - scale);
+            const deltaY = (currentCentroid.y || 0) * (1 - scale);
+
+            totalDeltaX += deltaX;
+            totalDeltaY += deltaY;
+
             const zoomEvent = new CustomEvent("pointerzoom", {
                 detail: {
                     scale,
-                    offsetX: currentCentroid?.x || 0,
-                    offsetY: currentCentroid?.y || 0,
+                    offsetX: totalDeltaX / (1 - scale),
+                    offsetY: totalDeltaY / (1 - scale),
                 },
             });
             this.element.dispatchEvent(zoomEvent);
+
+            totalDeltaScale += Math.log2(scale);
+        } else {
+            if (totalDeltaX !== 0 || totalDeltaY !== 0) {
+                const dragEvent = new CustomEvent("pointerdrag", {
+                    detail: { deltaX: totalDeltaX, deltaY: totalDeltaY },
+                });
+
+                this.element.dispatchEvent(dragEvent);
+            }
         }
+
+        const time = performance.now();
+        this.velocityHistory.push({
+            time,
+            velX: totalDeltaX,
+            velY: totalDeltaY,
+            velScale: totalDeltaScale,
+        });
     }
 
     handlePointerUp(event) {
         this.pointerManager.removePointer(event.pointerId);
 
         if (this.pointerManager.getPointerCount() === 0) {
-            // Reset state when all pointers are lifted
-            this.pointerManager.referenceCentroid = null;
-            this.pointerManager.lastAverageDistance = null;
+            // Compute weighted average velocities from velocityHistory
+            this.computeWeightedAverageVelocities();
+            this.startMomentum();
+        }
+    }
+
+    cleanVelocityHistory(currentTime) {
+        while (
+            this.velocityHistory.length > 0 &&
+            currentTime - this.velocityHistory[0].time > 100
+        ) {
+            this.velocityHistory.shift();
+        }
+    }
+
+    computeWeightedAverageVelocities() {
+        const now = performance.now();
+        this.cleanVelocityHistory(now);
+
+        if (this.velocityHistory.length === 0) {
+            this.dragVelocityX = 0;
+            this.dragVelocityY = 0;
+            this.scaleVelocity = 0;
+            return;
+        }
+
+        let weightedX = 0;
+        let weightedY = 0;
+        let weightedScale = 0;
+
+        for (let i = 0; i < this.velocityHistory.length; i++) {
+            const current = this.velocityHistory[i];
+
+            weightedX += current.velX;
+            weightedY += current.velY;
+            weightedScale += current.velScale;
+        }
+
+        const totalTime =
+            (this.velocityHistory[this.velocityHistory.length - 1].time -
+                this.velocityHistory[0].time) /
+            1000;
+
+        if (totalTime > 0) {
+            this.dragVelocityX = weightedX / totalTime;
+            this.dragVelocityY = weightedY / totalTime;
+            this.scaleVelocity = weightedScale / totalTime;
+        } else {
+            this.dragVelocityX = 0;
+            this.dragVelocityY = 0;
+            this.scaleVelocity = 0;
+        }
+    }
+
+    startMomentum() {
+        if (this.momentumActive) return;
+        this.momentumActive = true;
+        this.lastTime = performance.now();
+        requestAnimationFrame(this.momentumTick);
+    }
+
+    stopMomentum() {
+        this.momentumActive = false;
+    }
+
+    momentumTick() {
+        if (!this.momentumActive) return;
+
+        const now = performance.now();
+        const deltaTime = (now - this.lastTime) / 1000;
+
+        if (deltaTime == 0) {
+            requestAnimationFrame(this.momentumTick);
+            return;
+        }
+
+        this.lastTime = now;
+
+        const applyFriction = (v) => {
+            const newV = v * this.friction ** (deltaTime * 1000);
+            return Math.abs(newV) < 0.0001 ? 0 : newV;
+        };
+
+        this.dragVelocityX = applyFriction(this.dragVelocityX);
+        this.dragVelocityY = applyFriction(this.dragVelocityY);
+        this.scaleVelocity = applyFriction(this.scaleVelocity);
+
+        let stillActive = false;
+
+        if (this.scaleVelocity !== 0) {
+            const scaleChange = 2 ** (this.scaleVelocity * deltaTime);
+
+            const deltaX = this.dragVelocityX * deltaTime;
+            const deltaY = this.dragVelocityY * deltaTime;
+
+            const zoomEvent = new CustomEvent("pointerzoom", {
+                detail: {
+                    scale: scaleChange,
+                    offsetX: deltaX / (1 - scaleChange),
+                    offsetY: deltaY / (1 - scaleChange),
+                },
+            });
+            this.element.dispatchEvent(zoomEvent);
+            stillActive = true;
+        } else if (this.dragVelocityX !== 0 || this.dragVelocityY !== 0) {
+            const deltaX = this.dragVelocityX * deltaTime;
+            const deltaY = this.dragVelocityY * deltaTime;
+
+            const dragEvent = new CustomEvent("pointerdrag", {
+                detail: { deltaX, deltaY },
+            });
+            this.element.dispatchEvent(dragEvent);
+            stillActive = true;
+        }
+
+        if (stillActive) {
+            requestAnimationFrame(this.momentumTick);
+        } else {
+            this.momentumActive = false;
         }
     }
 
@@ -165,6 +319,7 @@ class PointerHandler {
         this.element.removeEventListener("pointermove", this.handlePointerMove);
         this.element.removeEventListener("pointerup", this.handlePointerUp);
         this.element.removeEventListener("pointercancel", this.handlePointerUp);
+        this.stopMomentum();
     }
 }
 
@@ -209,226 +364,6 @@ class ClientPosition {
 
 const canvasContainer = document.getElementById("canvas-container");
 
-function testGestures(element) {
-    if (!(element instanceof HTMLElement)) {
-        throw new Error("Provided input is not a valid DOM element.");
-    }
-
-    const rect = element.getBoundingClientRect();
-
-    // Normalize coordinates to element size
-    function normalizeToElement(x, y) {
-        return {
-            clientX: rect.left + x * rect.width,
-            clientY: rect.top + y * rect.height,
-        };
-    }
-
-    // Pointer visual management
-    const pointerVisuals = {};
-
-    function createPointerVisual(pointerId, x, y) {
-        const visual = document.createElement("div");
-        visual.style.position = "absolute";
-        visual.style.width = "30px";
-        visual.style.height = "30px";
-        visual.style.background = `conic-gradient(from 0deg, #FFD700, #FFA500, #FFD700)`;
-        visual.style.borderRadius = "50%";
-        visual.style.boxShadow = "0 0 10px rgba(255, 223, 0, 0.6)";
-        visual.style.animation =
-            "spin 1s linear infinite, pulse-shadow 1s infinite";
-        visual.style.pointerEvents = "none";
-        visual.style.zIndex = "999999";
-        visual.style.left = `${x - 15}px`;
-        visual.style.top = `${y - 15}px`;
-        document.body.appendChild(visual);
-        pointerVisuals[pointerId] = visual;
-
-        const style = document.createElement("style");
-        style.textContent = `
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            @keyframes pulse-shadow {
-                0% { box-shadow: 0 0 10px rgba(255, 223, 0, 0.6); }
-                50% { box-shadow: 0 0 20px rgba(255, 223, 0, 1); }
-                100% { box-shadow: 0 0 10px rgba(255, 223, 0, 0.6); }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function movePointerVisual(pointerId, x, y) {
-        const visual = pointerVisuals[pointerId];
-        if (visual) {
-            visual.style.left = `${x - 15}px`;
-            visual.style.top = `${y - 15}px`;
-        }
-    }
-
-    function removePointerVisual(pointerId) {
-        const visual = pointerVisuals[pointerId];
-        if (visual) {
-            visual.remove();
-            delete pointerVisuals[pointerId];
-        }
-    }
-
-    function triggerPointerEvent(type, { pointerId, x, y }, target = element) {
-        const { clientX, clientY } = normalizeToElement(x, y);
-
-        const event = new PointerEvent(type, {
-            pointerId,
-            bubbles: true,
-            cancelable: true,
-            clientX,
-            clientY,
-            isPrimary: pointerId === 1,
-            pointerType: "touch",
-        });
-        target.dispatchEvent(event);
-
-        if (type === "pointerdown") {
-            createPointerVisual(pointerId, clientX, clientY);
-        } else if (type === "pointermove") {
-            movePointerVisual(pointerId, clientX, clientY);
-        } else if (type === "pointerup" || type === "pointercancel") {
-            removePointerVisual(pointerId);
-        }
-    }
-
-    function delay(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    async function gesture(startPoints, endPoints, steps = 30, duration = 500) {
-        const interval = duration / steps;
-        const pointers = Object.keys(startPoints);
-
-        pointers.forEach((pointerId) => {
-            triggerPointerEvent("pointerdown", {
-                pointerId: parseInt(pointerId, 10),
-                ...startPoints[pointerId],
-            });
-        });
-
-        for (let i = 1; i <= steps; i++) {
-            const progress = i / steps;
-            pointers.forEach((pointerId) => {
-                const start = startPoints[pointerId];
-                const end = endPoints[pointerId];
-                const currentX = start.x + (end.x - start.x) * progress;
-                const currentY = start.y + (end.y - start.y) * progress;
-                triggerPointerEvent("pointermove", {
-                    pointerId: parseInt(pointerId, 10),
-                    x: currentX,
-                    y: currentY,
-                });
-            });
-            await delay(interval);
-        }
-
-        pointers.forEach((pointerId) => {
-            triggerPointerEvent("pointerup", {
-                pointerId: parseInt(pointerId, 10),
-                ...endPoints[pointerId],
-            });
-        });
-    }
-
-    async function singleFingerDrag() {
-        console.log("Testing single finger drag...");
-        await gesture({ 1: { x: 0.1, y: 0.1 } }, { 1: { x: 0.9, y: 0.9 } });
-    }
-
-    async function twoFingerPinch() {
-        console.log("Testing two-finger pinch...");
-        await gesture(
-            {
-                1: { x: 0.3, y: 0.5 },
-                2: { x: 0.7, y: 0.5 },
-            },
-            {
-                1: { x: 0.4, y: 0.5 },
-                2: { x: 0.6, y: 0.5 },
-            }
-        );
-    }
-
-    async function fourFingerZoom() {
-        console.log("Testing four-finger zoom...");
-        await gesture(
-            {
-                1: { x: 0.2, y: 0.4 },
-                2: { x: 0.8, y: 0.4 },
-                3: { x: 0.2, y: 0.6 },
-                4: { x: 0.8, y: 0.6 },
-            },
-            {
-                1: { x: 0.4, y: 0.5 },
-                2: { x: 0.6, y: 0.5 },
-                3: { x: 0.4, y: 0.5 },
-                4: { x: 0.6, y: 0.5 },
-            }
-        );
-    }
-
-    async function threeToTwoToOneFingerGesture() {
-        console.log("Testing three-to-two-to-one finger gesture...");
-        await gesture(
-            {
-                1: { x: 0.2, y: 0.2 },
-                2: { x: 0.5, y: 0.2 },
-                3: { x: 0.8, y: 0.2 },
-            },
-            {
-                1: { x: 0.4, y: 0.5 },
-                2: { x: 0.5, y: 0.5 },
-                3: { x: 0.6, y: 0.5 },
-            }
-        );
-
-        await delay(200);
-
-        await gesture(
-            {
-                1: { x: 0.4, y: 0.5 },
-                2: { x: 0.6, y: 0.5 },
-            },
-            {
-                1: { x: 0.5, y: 0.5 },
-                2: { x: 0.5, y: 0.5 },
-            }
-        );
-
-        await delay(200);
-
-        await gesture(
-            {
-                1: { x: 0.5, y: 0.5 },
-            },
-            {
-                1: { x: 0.9, y: 0.9 },
-            }
-        );
-    }
-
-    // Execute all gestures
-    (async () => {
-        // await singleFingerDrag();
-        await twoFingerPinch();
-        // await fourFingerZoom();
-        // await threeToTwoToOneFingerGesture();
-    })();
-}
-
-// document.addEventListener("keydown", function (event) {
-//     if (event.code === "Space") {
-//         testGestures(canvasContainer);
-//     }
-// });
-
 const displayCanvas = document.getElementById("display-canvas");
 displayCanvas.width = 2048;
 displayCanvas.height = 2048;
@@ -465,21 +400,33 @@ const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
         const { clientWidth, clientHeight } = entry.target;
 
+        const canvasSquareSize = Math.max(clientWidth, clientHeight);
+
         canvasContainer.width = clientWidth;
         canvasContainer.height = clientHeight;
 
+        if (clientWidth > clientHeight) {
+            canvasContainer.offsetX = 0;
+            canvasContainer.offsetY = (clientWidth - clientHeight) / 2;
+        } else {
+            canvasContainer.offsetX = (clientHeight - clientWidth) / 2;
+            canvasContainer.offsetY = 0;
+        }
+
+        canvasContainer.squareSize = canvasSquareSize;
+
         // renderImageFromCache();
 
-        cachedPosition.updateDimensions(clientWidth, clientHeight);
-        oldCachedPosition.updateDimensions(clientWidth, clientHeight);
+        cachedPosition.updateDimensions(canvasSquareSize, canvasSquareSize);
+        oldCachedPosition.updateDimensions(canvasSquareSize, canvasSquareSize);
 
         renderWake();
 
         if (workerInitialized) {
             worker.postMessage({
                 type: "resizeViewport",
-                canvasWidth: canvasContainer.width,
-                canvasHeight: canvasContainer.height,
+                canvasWidth: canvasSquareSize,
+                canvasHeight: canvasSquareSize,
             });
         }
     }
@@ -517,8 +464,8 @@ function renderImage(
             zoom,
             offsetX,
             offsetY,
-            canvasContainer.width,
-            canvasContainer.height
+            canvasContainer.squareSize,
+            canvasContainer.squareSize
         );
     }
 
@@ -532,8 +479,8 @@ function renderImage(
             oldZoom,
             oldOffsetX,
             oldOffsetY,
-            canvasContainer.width,
-            canvasContainer.height
+            canvasContainer.squareSize,
+            canvasContainer.squareSize
         );
     }
 
@@ -554,12 +501,12 @@ function pushImage() {
         pushCache = undefined;
     }
 
-    offsetX = cachedPosition.offsetX;
-    offsetY = cachedPosition.offsetY;
+    offsetX = cachedPosition.offsetX - canvasContainer.offsetX;
+    offsetY = cachedPosition.offsetY - canvasContainer.offsetY;
     zoom = cachedPosition.zoom;
 
-    oldOffsetX = oldCachedPosition.offsetX;
-    oldOffsetY = oldCachedPosition.offsetY;
+    oldOffsetX = oldCachedPosition.offsetX - canvasContainer.offsetX;
+    oldOffsetY = oldCachedPosition.offsetY - canvasContainer.offsetY;
     oldZoom = oldCachedPosition.zoom;
 
     if (loading) {
@@ -588,7 +535,7 @@ function pushImage() {
 }
 
 function transformCanvas(toTransform, offsetX, offsetY, zoom) {
-    const squareRatio = canvasContainer.width / toTransform.width;
+    const squareRatio = canvasContainer.squareSize / toTransform.width;
 
     const squareSizeDiff =
         zoom * squareRatio * toTransform.width - toTransform.width;
@@ -711,9 +658,48 @@ worker.onmessage = async function (e) {
                 worker.addEventListener("message", handleWorkerMessage);
                 worker.postMessage({
                     type: "resizeViewport",
-                    canvasWidth: canvasContainer.width,
-                    canvasHeight: canvasContainer.height,
+                    canvasWidth: canvasContainer.squareSize,
+                    canvasHeight: canvasContainer.squareSize,
                 });
+            });
+
+            await new Promise((resolve) => {
+                const handleWorkerMessage = (e) => {
+                    if (e.data.type === "zoomViewportComplete") {
+                        worker.removeEventListener(
+                            "message",
+                            handleWorkerMessage
+                        );
+                        resolve();
+                    }
+                };
+
+                const mouseX = canvasContainer.width / 2;
+                const mouseY = canvasContainer.height / 2;
+
+                const zoomFactor =
+                    (Math.min(canvasContainer.width, canvasContainer.height) /
+                        canvasContainer.squareSize) *
+                    0.8;
+
+                worker.addEventListener("message", handleWorkerMessage);
+                worker.postMessage({
+                    type: "zoomViewport",
+                    mouseX: mouseX + canvasContainer.offsetX,
+                    mouseY: mouseY + canvasContainer.offsetY,
+                    zoomDelta: zoomFactor,
+                });
+
+                cachedPosition.updatePosition(
+                    mouseX + canvasContainer.offsetX,
+                    mouseY + canvasContainer.offsetY,
+                    zoomFactor
+                );
+                oldCachedPosition.updatePosition(
+                    mouseX + canvasContainer.offsetX,
+                    mouseY + canvasContainer.offsetY,
+                    zoomFactor
+                );
             });
 
             workerInitialized = true;
@@ -864,14 +850,18 @@ function renderLoopInit() {
                 if (isMouseDown && clickZoomEnabled) {
                     worker.postMessage({
                         type: "zoomViewport",
-                        mouseX: mouseX,
-                        mouseY: mouseY,
+                        mouseX: mouseX + canvasContainer.offsetX,
+                        mouseY: mouseY + canvasContainer.offsetY,
                         zoomDelta: zoomFactor,
                     });
-                    cachedPosition.updatePosition(mouseX, mouseY, zoomFactor);
+                    cachedPosition.updatePosition(
+                        mouseX + canvasContainer.offsetX,
+                        mouseY + canvasContainer.offsetY,
+                        zoomFactor
+                    );
                     oldCachedPosition.updatePosition(
-                        mouseX,
-                        mouseY,
+                        mouseX + canvasContainer.offsetX,
+                        mouseY + canvasContainer.offsetY,
                         zoomFactor
                     );
                     imageDirty = true;
@@ -887,16 +877,16 @@ function renderLoopInit() {
                     let offsetY = 0;
 
                     if (pressedKeys["ArrowUp"]) {
-                        offsetY -= canvasContainer.width * deltaTime;
+                        offsetY -= canvasContainer.squareSize * deltaTime;
                     }
                     if (pressedKeys["ArrowDown"]) {
-                        offsetY += canvasContainer.width * deltaTime;
+                        offsetY += canvasContainer.squareSize * deltaTime;
                     }
                     if (pressedKeys["ArrowLeft"]) {
-                        offsetX -= canvasContainer.width * deltaTime;
+                        offsetX -= canvasContainer.squareSize * deltaTime;
                     }
                     if (pressedKeys["ArrowRight"]) {
-                        offsetX += canvasContainer.width * deltaTime;
+                        offsetX += canvasContainer.squareSize * deltaTime;
                     }
 
                     worker.postMessage({
@@ -941,26 +931,26 @@ function renderLoopInit() {
 
         worker.postMessage({
             type: "zoomViewport",
-            mouseX: event.offsetX,
-            mouseY: event.offsetY,
+            mouseX: event.offsetX + canvasContainer.offsetX,
+            mouseY: event.offsetY + canvasContainer.offsetY,
             zoomDelta:
                 event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor,
         });
         cachedPosition.updatePosition(
-            event.offsetX,
-            event.offsetY,
+            event.offsetX + canvasContainer.offsetX,
+            event.offsetY + canvasContainer.offsetY,
             event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
         );
         oldCachedPosition.updatePosition(
-            event.offsetX,
-            event.offsetY,
+            event.offsetX + canvasContainer.offsetX,
+            event.offsetY + canvasContainer.offsetY,
             event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
         );
 
         wake();
     });
 
-    canvasContainer.addEventListener("pointerzoom", async (event) => {
+    canvasContainer.addEventListener("pointerzoom", (event) => {
         event.preventDefault();
 
         event = event.detail;
@@ -969,18 +959,18 @@ function renderLoopInit() {
 
         worker.postMessage({
             type: "zoomViewport",
-            mouseX: event.offsetX,
-            mouseY: event.offsetY,
+            mouseX: event.offsetX + canvasContainer.offsetX,
+            mouseY: event.offsetY + canvasContainer.offsetY,
             zoomDelta: scrollZoomFactor,
         });
         cachedPosition.updatePosition(
-            event.offsetX,
-            event.offsetY,
+            event.offsetX + canvasContainer.offsetX,
+            event.offsetY + canvasContainer.offsetY,
             scrollZoomFactor
         );
         oldCachedPosition.updatePosition(
-            event.offsetX,
-            event.offsetY,
+            event.offsetX + canvasContainer.offsetX,
+            event.offsetY + canvasContainer.offsetY,
             scrollZoomFactor
         );
 
@@ -1007,7 +997,7 @@ function renderLoopInit() {
         }
     });
 
-    async function handlePointerDrag(event) {
+    function handlePointerDrag(event) {
         event = event.detail;
         if (!clickZoomEnabled) {
             worker.postMessage({

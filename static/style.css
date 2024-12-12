@@ -1,55 +1,84 @@
-.spinner {
-    display: inline-block;
-    width: 40px;
-    height: 40px;
-    border: 4px solid #333;
-    border-top: 4px solid #ff2626;
-    border-radius: 50%;
-    /* animation: spin 2s linear infinite; */
+:root {
+    --hamburger-size: 2rem;
 }
 
-/* @keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-} */
+.hamburger {
+    background-color: rgba(255, 255, 255, 0.671);
+    box-shadow: inset 0 0 0.5rem rgba(0, 0, 0, 0.582);
+    border-radius: 0.5rem;
 
+    display: flex;
+    flex-direction: column;
+
+    width: var(--hamburger-size);
+    height: calc(var(--hamburger-size) * 0.875);
+
+    padding: calc(var(--hamburger-size) * 0.1875);
+
+    z-index: 3;
+}
+
+.hamburger:active {
+    transition: all 0.2s ease-in-out;
+    transform: scale(0.9);
+}
+
+.hamburger div {
+    background-color: black;
+    height: calc(var(--hamburger-size) * 0.15625);
+    transition: all 0.1s ease-in-out;
+}
+
+#hamburger-toggle {
+    display: none;
+}
+
+#hamburger-toggle:not(:checked)+.hamburger {
+    justify-content: space-between;
+}
+
+
+#hamburger-toggle:checked+.hamburger .top {
+    transform: rotate(-45deg) translateX(calc(var(--hamburger-size) * -0.25)) translateY(calc(var(--hamburger-size) * 0.25));
+}
+
+#hamburger-toggle:checked+.hamburger .meat {
+    transform: rotate(45deg) translateX(calc(var(--hamburger-size) * 0.15)) translateY(calc(var(--hamburger-size) * 0.15));
+}
+
+#hamburger-toggle:checked+.hamburger .bottom {
+    transform: scale(0);
+}
+
+#hamburger-toggle:not(:checked)~.config-container {
+    display: none;
+}
+
+.menu-overlay {
+    top: 0.5rem;
+    left: 0.5rem;
+    position: fixed;
+    display: block;
+    z-index: 3;
+}
+
+html {
+    height: 100%;
+}
+
+body {
+    height: 100%;
+}
 
 main {
-    --padding: 2rem;
-    height: calc(100vh - 2 * var(--padding));
-    padding: var(--padding);
-}
-
-.main-container {
-    /* margin-left: auto; */
-
-    gap: 1rem;
-
-
-
-
-    /* margin: 0 auto; */
-    /* width: min-content; */
-
-    /* justify-content: space-between; */
-
-    align-content: start;
-
-    flex-wrap: wrap;
-    display: flex;
-
-    /* width: max-content; */
-
     height: 100%;
 }
 
 .config-container {
+    background-color: white;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
     width: min-content;
-    flex-grow: 1;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -59,7 +88,10 @@ main {
     position: relative;
     overflow: clip;
     display: block;
-    aspect-ratio: 1/1;
+    width: 100%;
+    height: 100%;
+
+    /* aspect-ratio: 1/1; */
 
     background: repeating-linear-gradient(45deg, #ffffff, #ffffff 2.5%, #eeeeee 2.5%, #eeeeee 5%);
 }
@@ -116,7 +148,6 @@ main {
 
     animation: inverse-waterdrop 1s linear infinite;
 }
-
 
 @media screen and (orientation: landscape) {
     #canvas-container {
