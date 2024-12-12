@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
 
     const exe = b.addExecutable(.{
         .name = "example",
@@ -84,4 +85,22 @@ pub fn build(b: *std.Build) void {
 
     const check_step = b.step("check", "check compilation");
     check_step.dependOn(&check_exe.step);
+
+    // --------------------------------------------------------
+
+    const benchmark_exe = b.addExecutable(.{
+        .name = "example",
+        .root_source_file = b.path("src/render_benchmark.zig"),
+        .optimize = optimize,
+        .target = target,
+    });
+
+    const benchmark_run_cmd = b.addRunArtifact(benchmark_exe);
+
+    if (b.args) |args| {
+        benchmark_run_cmd.addArgs(args);
+    }
+
+    const benchmark_step = b.step("benchmark", "benchmark performance");
+    benchmark_step.dependOn(&benchmark_run_cmd.step);
 }

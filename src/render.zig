@@ -2695,7 +2695,7 @@ fn splitterRandomizeInverse(splitters: [10]u8) [10]u8 {
     return res_splitters;
 }
 
-fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
+pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
     var splitters = splitters_arg;
 
     splitters = splitterRandomize(splitters);
@@ -2708,7 +2708,7 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
 
     total_color_modifiers_flat = total_color_modifiers_flat % (4 * 4 * 4);
 
-    var total_color_modifiers: [3]usize = undefined;
+    var total_color_modifiers: [3]u16 = undefined;
     {
         var temp = total_color_modifiers_flat;
         for (&total_color_modifiers) |*color_modifier| {
@@ -2717,13 +2717,13 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
         }
     }
 
-    var total_color: [3]usize = undefined;
+    var total_color: [3]u16 = undefined;
     for (&total_color, &color, &total_color_modifiers) |*total_color_component, color_component, color_modifier| {
-        const color_modifier_sub: usize = if (color_modifier < 1) 1 else 0;
+        const color_modifier_sub: u16 = if (color_modifier < 1) 1 else 0;
 
-        const color_modifier_add: usize = if (color_modifier > 0) color_modifier - 1 else 0;
+        const color_modifier_add: u16 = if (color_modifier > 0) color_modifier - 1 else 0;
 
-        total_color_component.* = @min(255 * 4, @as(usize, color_component) * 4 + color_modifier_add);
+        total_color_component.* = @min(255 * 4, @as(u16, color_component) * 4 + color_modifier_add);
 
         total_color_component.* = total_color_component.* - @min(total_color_component.*, color_modifier_sub);
     }
@@ -2735,7 +2735,7 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
     in_alt_path = is_zero;
 
     outer: for (&total_color, 0..) |total_color_component, i| {
-        var sum: usize = 0;
+        var sum: u16 = 0;
 
         var splitter_code: u32 = 0;
 
@@ -2756,7 +2756,7 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
 
             total_range /= range + 1;
 
-            const point_in_range = (splitter_code % (range + 1));
+            const point_in_range: u8 = @intCast(splitter_code % (range + 1));
             splitter_code /= range + 1;
 
             const res_color_component = (min - sum) + point_in_range;
@@ -2770,7 +2770,7 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
         //     break :outer;
         // }
 
-        if ((total_range != 0 and splitter_code != total_range - 1)) {
+        if (total_range != 0 and splitter_code != total_range - 1) {
             in_alt_path = true;
             break :outer;
         }
@@ -2800,9 +2800,9 @@ fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
 
             // min for color_component less than: 110
             // max for color_component less than: 146
-            const base = if (color_component < 128) @as(usize, color_component) + 1 else 256 - @as(usize, color_component);
+            const base = if (color_component < 128) @as(u16, color_component) + 1 else 256 - @as(u16, color_component);
 
-            var target: usize = 0;
+            var target: u16 = 0;
             var diffs: [4]u8 = undefined;
 
             for (0..4) |j| {
