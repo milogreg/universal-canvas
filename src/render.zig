@@ -899,7 +899,7 @@ pub const SelfConsumingReaderState = struct {
         this.digit_count += 1;
     }
 
-    fn iterateAllNoColor(noalias this: *const SelfConsumingReaderState, digits: VirtualDigitArray, noalias res: *[4]SelfConsumingReaderState) void {
+    pub fn iterateAllNoColor(noalias this: *const SelfConsumingReaderState, digits: VirtualDigitArray, noalias res: *[4]SelfConsumingReaderState) void {
         std.debug.assert(this.digit_count > 0);
 
         for (res) |*next| {

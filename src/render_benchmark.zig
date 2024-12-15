@@ -18,6 +18,9 @@ pub fn main() !void {
     const state_iterate_all_time = try benchmarkStateIterateAll(allocator);
     std.debug.print("state iterate all time: {d} ms\n", .{@as(f128, @floatFromInt(state_iterate_all_time)) / 1000000.0});
 
+    const state_iterate_all_no_color_time = try benchmarkStateIterateAllNoColor(allocator);
+    std.debug.print("state iterate all no color time: {d} ms\n", .{@as(f128, @floatFromInt(state_iterate_all_no_color_time)) / 1000000.0});
+
     const split_color_time = try benchmarkSplitColor(allocator);
     std.debug.print("split color time: {d} ms\n", .{@as(f128, @floatFromInt(split_color_time)) / 1000000.0});
 }
@@ -194,6 +197,67 @@ fn benchmarkFillIteration(allocator: std.mem.Allocator) !u64 {
     var timer = try std.time.Timer.start();
 
     _ = iteration_state.iterate(1000000000);
+
+    return timer.read();
+}
+
+fn benchmarkStateIterateAllNoColor(allocator: std.mem.Allocator) !u64 {
+    const state_count = 1398101 * 10;
+
+    const digits = try render.DigitArray.init(allocator, 1000000);
+    defer digits.deinit(allocator);
+
+    var prng = std.Random.DefaultPrng.init(123);
+    const random = prng.random();
+
+    for (0..digits.length) |i| {
+        digits.set(i, random.int(u2));
+    }
+
+    const input_states = try allocator.alloc(render.SelfConsumingReaderState, state_count);
+    defer allocator.free(input_states);
+
+    const root_color: render.Color = .{
+        .r = 60,
+        .g = 60,
+        .b = 60,
+        .a = 255,
+    };
+
+    var states: [2]render.SelfConsumingReaderState = undefined;
+    states[0] = render.SelfConsumingReaderState.init(0, root_color);
+
+    var current_state = &states[0];
+    var next_state = &states[1];
+
+    for (0..digits.length - 1) |i| {
+        const digit = digits.get(i);
+
+        current_state.iterate(digit, render.VirtualDigitArray.fromDigitArray(digits, 0, 0, 0), next_state);
+
+        if (i < input_states.len) {
+            input_states[i] = next_state.*;
+        }
+
+        const temp = current_state;
+        current_state = next_state;
+        next_state = temp;
+    }
+
+    if (input_states.len > digits.length - 1) {
+        for (digits.length - 1..input_states.len) |i| {
+            input_states[i] = input_states[i % (digits.length - 1)];
+        }
+    }
+
+    const output_states = try allocator.alloc(render.SelfConsumingReaderState, state_count * 4);
+    defer allocator.free(output_states);
+
+    var timer = try std.time.Timer.start();
+
+    for (input_states, 0..) |*state, i| {
+        state.iterateAllNoColor(render.VirtualDigitArray.fromDigitArray(digits, 0, 0, 0), output_states[i * 4 ..][0..4]);
+    }
 
     return timer.read();
 }
