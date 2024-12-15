@@ -154,7 +154,7 @@ pub const FillIterationState = struct {
             // const small_x = x / square_size_mult;
             // const small_y = y / square_size_mult;
 
-            this.output_colors[y][x] = this.states[this.output_colors_idx].color;
+            this.output_colors[y][x] = arrToColor(this.states[this.output_colors_idx].color);
 
             this.output_colors_idx += 1;
         }
@@ -709,7 +709,7 @@ pub const SelfConsumingReaderState = struct {
     position_start: usize,
 
     digit_count: usize,
-    color: Color,
+    color: [3]u8,
 
     command: CommandState,
 
@@ -727,7 +727,7 @@ pub const SelfConsumingReaderState = struct {
             .position_start = 0,
 
             .digit_count = digit_count,
-            .color = color,
+            .color = colorToArr(color),
 
             .command = undefined,
 
@@ -1003,16 +1003,15 @@ pub const SelfConsumingReaderState = struct {
         this.iterateAllNoColor(digits, res);
 
         const child_colors = this.getChildColors(digits);
-        // const child_colors: [4]Color = @splat(this.color);
 
         for (res, &child_colors) |*res_val, child_color| {
             res_val.color = child_color;
         }
     }
 
-    pub fn getChildColors(this: *const SelfConsumingReaderState, digits: VirtualDigitArray) [4]Color {
+    pub fn getChildColors(this: *const SelfConsumingReaderState, digits: VirtualDigitArray) [4][3]u8 {
         if (this.digit_count == 0) {
-            const default: [4]Color = @splat(this.color);
+            const default: [4][3]u8 = @splat(this.color);
             return default;
         }
 
@@ -2703,9 +2702,8 @@ fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
     return res_splitters;
 }
 
-pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
+pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
-    const color = colorToArr(color_arg);
 
     splitters = splitterRandomize(splitters);
 
@@ -2853,12 +2851,7 @@ pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
         }
     }
 
-    var res: [4]Color = undefined;
-    for (&res, res_colors) |*res_color, res_color_arr| {
-        res_color.* = arrToColor(res_color_arr);
-    }
-
-    return res;
+    return res_colors;
 }
 
 fn getSplitters(parent_color: Color, child_colors: [4]Color) [10]u8 {

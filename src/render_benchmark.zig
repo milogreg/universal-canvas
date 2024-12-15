@@ -201,7 +201,7 @@ fn benchmarkFillIteration(allocator: std.mem.Allocator) !u64 {
 fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
     const color_count = 1398101 * 10;
 
-    const colors = try allocator.alloc(render.Color, color_count);
+    const colors = try allocator.alloc([3]u8, color_count);
     defer allocator.free(colors);
 
     const splitters = try allocator.alloc([10]u8, color_count);
@@ -211,13 +211,11 @@ fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
     const random = prng.random();
 
     for (colors, splitters) |*color, *splitter| {
-        color.* = @bitCast(random.int(u32));
-        color.a = 255;
-
+        random.bytes(color);
         random.bytes(splitter);
     }
 
-    const split_colors = try allocator.alloc([4]render.Color, color_count);
+    const split_colors = try allocator.alloc([4][3]u8, color_count);
     defer allocator.free(split_colors);
 
     var timer = try std.time.Timer.start();
@@ -231,7 +229,7 @@ fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
 
         const split = render.splitColor(color, splitter);
         for (0..4) |i| {
-            accum ^= @bitCast(split[i]);
+            accum ^= @as(u24, @bitCast(@as(@Vector(3, u8), split[i])));
         }
     }
 
