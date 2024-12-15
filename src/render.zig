@@ -2663,7 +2663,6 @@ const zero_splitters = blk: {
 
 fn splitterRandomize(splitters: [10]u8) [10]u8 {
     var res_splitters = splitters;
-    _ = &res_splitters;
 
     for (&res_splitters, &splitter_salt) |*splitter, salt| {
         splitter.* ^= salt;
@@ -2680,7 +2679,6 @@ fn splitterRandomize(splitters: [10]u8) [10]u8 {
 
 fn splitterRandomizeInverse(splitters: [10]u8) [10]u8 {
     var res_splitters = splitters;
-    _ = &res_splitters;
 
     for (&res_splitters, &splitter_salt) |*splitter, salt| {
         splitter.* ^= salt;
@@ -2695,108 +2693,75 @@ fn splitterRandomizeInverse(splitters: [10]u8) [10]u8 {
     return res_splitters;
 }
 
+fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
+    var res_splitters = splitters;
+
+    for (&res_splitters, 0..) |*splitter, i| {
+        splitter.* ^= color[i % 3];
+    }
+
+    return res_splitters;
+}
+
 pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
     var splitters = splitters_arg;
+    const color = colorToArr(color_arg);
 
     splitters = splitterRandomize(splitters);
 
     const is_zero = std.mem.indexOfNone(u8, &splitters, &.{0}) == null;
 
-    const color = colorToArr(color_arg);
+    splitters = splitterApplyColorSalt(splitters, color);
 
-    var total_color_modifiers_flat = splitters[3 * 3 + 0];
-
-    total_color_modifiers_flat = total_color_modifiers_flat % (4 * 4 * 4);
-
-    var total_color_modifiers: [3]u16 = undefined;
-    {
-        var temp = total_color_modifiers_flat;
-        for (&total_color_modifiers) |*color_modifier| {
-            color_modifier.* = temp % 4;
-            temp /= 4;
-        }
-    }
+    const color_modifiers_flat = splitters[3 * 3];
 
     var total_color: [3]u16 = undefined;
-    for (&total_color, &color, &total_color_modifiers) |*total_color_component, color_component, color_modifier| {
-        const color_modifier_sub: u16 = if (color_modifier < 1) 1 else 0;
+    for (&total_color, &color, 0..) |*total_color_component, color_component, i| {
+        var color_modifier: i16 = @intCast((color_modifiers_flat >> @intCast(i * 2)) & 0b11);
+        color_modifier -= 1;
 
-        const color_modifier_add: u16 = if (color_modifier > 0) color_modifier - 1 else 0;
+        var total_color_component_signed = @as(i16, color_component) * 4;
+        total_color_component_signed += color_modifier;
+        total_color_component_signed = std.math.clamp(total_color_component_signed, 0, 255 * 4);
 
-        total_color_component.* = @min(255 * 4, @as(u16, color_component) * 4 + color_modifier_add);
-
-        total_color_component.* = total_color_component.* - @min(total_color_component.*, color_modifier_sub);
+        total_color_component.* = @intCast(total_color_component_signed);
     }
 
     var res_colors: [4][3]u8 = undefined;
 
-    var in_alt_path = false;
+    var in_alt_path = is_zero;
 
-    in_alt_path = is_zero;
+    if (!in_alt_path) {
+        outer: for (&total_color, 0..) |total_color_component, i| {
+            var total: u16 = 0;
+            for (0..3) |j| {
+                const res_color_component: u8 = splitters[i * 3 + j];
 
-    outer: for (&total_color, 0..) |total_color_component, i| {
-        var sum: u16 = 0;
+                total += res_color_component;
 
-        var splitter_code: u32 = 0;
+                res_colors[j][i] = @intCast(res_color_component);
+            }
 
-        for (splitters[i * 3 .. (i + 1) * 3]) |splitter| {
-            splitter_code <<= 8;
-            splitter_code |= splitter;
+            if (total > total_color_component or total_color_component - total > 255) {
+                in_alt_path = true;
+                break :outer;
+            }
+
+            res_colors[3][i] = @intCast(total_color_component - total);
         }
-
-        var total_range: u32 = (1 << 24) - 1;
-
-        for (0..3) |j| {
-            const remaining = total_color_component - @min(total_color_component, sum);
-
-            const min = sum + (remaining - @min(remaining, 255 * (3 - j)));
-            const max = @min(total_color_component, sum + 255);
-
-            const range = max - min;
-
-            total_range /= range + 1;
-
-            const point_in_range: u8 = @intCast(splitter_code % (range + 1));
-            splitter_code /= range + 1;
-
-            const res_color_component = (min - sum) + point_in_range;
-            res_colors[j][i] = @intCast(res_color_component);
-
-            sum += res_color_component;
-        }
-
-        // if (splitter_code != 0) {
-        //     in_alt_path = true;
-        //     break :outer;
-        // }
-
-        if (total_range != 0 and splitter_code != total_range - 1) {
-            in_alt_path = true;
-            break :outer;
-        }
-
-        // if (total_range != 0 and splitter_code != 1 and !is_zero) {
-        //     in_alt_path = true;
-        //     break :outer;
-        // }
-
-        res_colors[3][i] = @intCast(total_color_component - sum);
     }
 
     if (in_alt_path) {
         for (0..3) |i| {
-            var splitter_code: u32 = 0;
+            const color_component = color[i];
 
+            var splitter_code: u32 = 0;
             for (splitters[i * 3 .. (i + 1) * 3]) |splitter| {
                 splitter_code <<= 8;
                 splitter_code |= splitter;
             }
 
-            splitter_code = xorshift32(splitter_code);
-
-            const extra_code = xorshift32(splitter_code);
-
-            const color_component = color[i];
+            splitter_code = lcg32(splitter_code);
 
             // min for color_component less than: 110
             // max for color_component less than: 146
@@ -2805,30 +2770,24 @@ pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
             var target: u16 = 0;
             var diffs: [4]u8 = undefined;
 
-            for (0..4) |j| {
-                if (is_zero) {
-                    if (color_component < 128) {
-                        const diff: u8 = @intCast(if (j == 0) base - 1 else 0);
+            if (is_zero) {
+                // const starting_diff: u8 = @intFromBool(color_component < 128) * @as(u8, @intCast(base - 1));
+                // const remaining_diff: u8 = @intFromBool(color_component >= 128) * @as(u8, @intCast(base - 1));
 
-                        splitter_code /= base;
+                const starting_diff: u8 = if (color_component < 128) @intCast(base - 1) else 0;
+                const remaining_diff: u8 = if (color_component < 128) 0 else @intCast(base - 1);
 
-                        diffs[j] = diff;
-                        target += diff;
-                    } else {
-                        const diff: u8 = @intCast(if (j == 0) 0 else base - 1);
+                diffs[0] = starting_diff;
+                diffs[1..].* = @splat(remaining_diff);
 
-                        splitter_code /= base;
+                target = @as(u16, starting_diff) + 3 * @as(u16, remaining_diff);
+            } else {
+                for (&diffs, 0..) |*diff, j| {
+                    const splitter_code_component: u8 = @intCast((splitter_code >> @intCast(j * 8)) & 0xFF);
 
-                        diffs[j] = diff;
-                        target += diff;
-                    }
-                } else {
-                    const diff: u8 = @intCast(splitter_code % base);
+                    diff.* = @intCast((@as(u32, splitter_code_component) * @as(u32, base)) >> 8);
 
-                    splitter_code /= base;
-
-                    diffs[j] = diff;
-                    target += diff;
+                    target += diff.*;
                 }
             }
 
@@ -2853,6 +2812,8 @@ pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
             const min_diff: u8 = @intCast(target / 4);
             const excess_diff = target % 4;
 
+            const extra_code = lcg32(splitter_code);
+
             var excess_idx: usize = extra_code % 4;
 
             if (is_zero) {
@@ -2863,25 +2824,32 @@ pub fn splitColor(color_arg: Color, splitters_arg: [10]u8) [4]Color {
                 }
             }
 
-            if (color_component < 128) {
-                for (0..4) |j| {
-                    res_colors[j][i] = color_component - diffs[j] + min_diff;
+            const mul: u8 = if (color_component < 128) 1 else 255;
+            for (0..4) |j| {
+                const excess: u8 = @intFromBool(excess_idx < excess_diff);
 
-                    if (excess_idx < excess_diff) {
-                        res_colors[j][i] += 1;
-                    }
-                    excess_idx = (excess_idx + 1) % 4;
-                }
-            } else {
-                for (0..4) |j| {
-                    res_colors[j][i] = color_component + diffs[j] - min_diff;
+                excess_idx = (excess_idx + 1) % 4;
 
-                    if (excess_idx < excess_diff) {
-                        res_colors[j][i] -= 1;
-                    }
-                    excess_idx = (excess_idx + 1) % 4;
-                }
+                res_colors[j][i] = color_component -% (diffs[j] *% mul) +% (min_diff *% mul) +% (excess *% mul);
             }
+
+            // if (color_component < 128) {
+            //     for (0..4) |j| {
+            //         const excess: u8 = @intFromBool(excess_idx < excess_diff);
+
+            //         excess_idx = (excess_idx + 1) % 4;
+
+            //         res_colors[j][i] = color_component - diffs[j] + min_diff + excess;
+            //     }
+            // } else {
+            //     for (0..4) |j| {
+            //         const excess: u8 = @intFromBool(excess_idx < excess_diff);
+
+            //         excess_idx = (excess_idx + 1) % 4;
+
+            //         res_colors[j][i] = color_component + diffs[j] - min_diff - excess;
+            //     }
+            // }
         }
     }
 
@@ -2934,66 +2902,19 @@ fn getSplitters(parent_color: Color, child_colors: [4]Color) [10]u8 {
 
     splitters[3 * 3 + 0] = @intCast(color_modifiers_flat);
 
-    for (&total_color, 0..) |total_color_component, i| {
-        var sum: usize = 0;
-
-        var splitter_code: u32 = 0;
-
-        var points_in_range: [3]u8 = undefined;
-        var ranges: [3]u8 = undefined;
-
-        for (0..3) |j| {
-            const remaining = total_color_component - @min(total_color_component, sum);
-
-            const min = sum + (remaining - @min(remaining, 255 * (3 - j)));
-            const max = @min(total_color_component, sum + 255);
-
-            const range = max - min;
-            ranges[j] = @intCast(range);
-
-            const res_color_component = res_colors[j][i];
-
-            // const point_in_range = res_color_component + sum - min;
-
-            const point_in_range = res_color_component - (min - (@min(min, sum)));
-
-            points_in_range[j] = @intCast(point_in_range);
-
-            sum += (min - sum) + point_in_range;
-        }
-
-        var total_range: u32 = (1 << 24) - 1;
-
-        for (&ranges) |range| {
-            total_range /= @as(u32, range) + 1;
-        }
-
-        splitter_code = if (total_range == 0) 0 else total_range - 1;
-
-        // splitter_code = @min(total_range, 1);
-
-        splitter_code *= @as(u32, ranges[2]) + 1;
-
-        splitter_code += points_in_range[2];
-
-        splitter_code *= @as(u32, ranges[1]) + 1;
-
-        splitter_code += points_in_range[1];
-
-        splitter_code *= @as(u32, ranges[0]) + 1;
-
-        splitter_code += points_in_range[0];
-
+    for (0..3) |i| {
         for (splitters[i * 3 .. (i + 1) * 3], 0..) |*splitter, j| {
-            splitter.* = @intCast((splitter_code >> @intCast((2 - j) * 8)) & 0xFF);
+            splitter.* = res_colors[j][i];
         }
     }
 
-    const is_zero = std.mem.indexOfNone(u8, &splitters, &.{0}) == null;
-    std.debug.assert(!is_zero);
+    // const is_zero = std.mem.indexOfNone(u8, &splitters, &.{0}) == null;
+    // std.debug.assert(!is_zero);
+
+    splitters = splitterApplyColorSalt(splitters, color);
+    splitters = splitterRandomizeInverse(splitters);
 
     // const tester = splitColor(parent_color, splitters);
-
     // if (!std.mem.eql(Color, child_colors[0..], tester[0..])) {
     //     jsPrint("{any} ", .{color});
     //     jsPrint("{any} ", .{total_color});
@@ -3002,8 +2923,6 @@ fn getSplitters(parent_color: Color, child_colors: [4]Color) [10]u8 {
     //     jsPrint("{any} ", .{tester});
     //     jsPrint(" ", .{});
     // }
-
-    splitters = splitterRandomizeInverse(splitters);
 
     return splitters;
 }
@@ -3039,6 +2958,17 @@ fn xorshift32(x: u32) u32 {
     res ^= res << 13;
     res ^= res >> 17;
     res ^= res << 5;
+    return res;
+}
+
+fn lcg32(x: u32) u32 {
+    var res = x;
+    // res *%= 134775813;
+    // res +%= 1;
+
+    res *%= 1664525;
+    res +%= 1013904223;
+
     return res;
 }
 

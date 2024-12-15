@@ -199,7 +199,7 @@ fn benchmarkFillIteration(allocator: std.mem.Allocator) !u64 {
 }
 
 fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
-    const color_count = 1398101;
+    const color_count = 1398101 * 10;
 
     const colors = try allocator.alloc(render.Color, color_count);
     defer allocator.free(colors);
@@ -222,9 +222,20 @@ fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
 
     var timer = try std.time.Timer.start();
 
+    var accum: u32 = 0;
+
     for (colors, splitters, split_colors) |color, splitter, *split_color| {
-        split_color.* = render.splitColor(color, splitter);
+        _ = split_color; // autofix
+
+        // split_color.* = render.splitColor(color, splitter);
+
+        const split = render.splitColor(color, splitter);
+        for (0..4) |i| {
+            accum ^= @bitCast(split[i]);
+        }
     }
+
+    std.mem.doNotOptimizeAway(accum);
 
     return timer.read();
 }

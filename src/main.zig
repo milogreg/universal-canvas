@@ -1260,6 +1260,13 @@ export fn init() void {
     // var enc = render.encodeColors(allocator, starting_colors) catch @panic("OOM");
     // defer enc.deinit(allocator);
 
+    // for (0..enc.length) |i| {
+    //     const digit = enc.get(i);
+    //     for (0..4) |j| {
+    //         state_tree.appendDigit(j, digit) catch @panic("OOM");
+    //     }
+    // }
+
     for (0..4) |i| {
         state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
     }
