@@ -81,13 +81,7 @@ pub const Panic = struct {
     pub const messages = std.debug.SimplePanic.messages;
 };
 
-// var gpa = std.heap.GeneralPurposeAllocator(.{
-//     .thread_safe = false,
-// }).init;
-// const allocator = gpa.allocator();
-// const allocator: std.mem.Allocator = std.heap.wasm_allocator;
-
-const allocator = std.heap.page_allocator;
+const allocator: std.mem.Allocator = std.heap.wasm_allocator;
 
 fn jsPrint(comptime fmt: []const u8, args: anytype) void {
     const to_print = std.fmt.allocPrint(allocator, fmt, args) catch @panic("OOM");
