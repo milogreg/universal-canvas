@@ -2519,7 +2519,7 @@ fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
     var res_splitters = splitters;
 
     for (&res_splitters, 0..) |*splitter, i| {
-        splitter.* ^= color[i % 3];
+        splitter.* ^= std.math.rotr(u8, color[i % 3], 4);
     }
 
     return res_splitters;
