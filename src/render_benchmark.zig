@@ -250,13 +250,14 @@ fn benchmarkStateIterateAllNoColor(allocator: std.mem.Allocator) !u64 {
         }
     }
 
-    const output_states = try allocator.alloc(render.SelfConsumingReaderState, state_count * 4);
-    defer allocator.free(output_states);
-
     var timer = try std.time.Timer.start();
 
-    for (input_states, 0..) |*state, i| {
-        state.iterateAllNoColor(render.VirtualDigitArray.fromDigitArray(digits, 0, 0, 0), output_states[i * 4 ..][0..4]);
+    for (input_states) |*state| {
+        var res: [4]render.SelfConsumingReaderState = undefined;
+
+        state.iterateAllNoColor(render.VirtualDigitArray.fromDigitArray(digits, 0, 0, 0), &res);
+
+        std.mem.doNotOptimizeAway(res);
     }
 
     return timer.read();
