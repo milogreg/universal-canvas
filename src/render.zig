@@ -2528,15 +2528,14 @@ fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
 pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
 
-    splitters = splitterRandomize(splitters);
+    const is_zero = std.mem.eql(u8, &splitters, &zero_splitters);
 
-    const is_zero = std.mem.indexOfNone(u8, &splitters, &.{0}) == null;
+    splitters = splitterRandomize(splitters);
+    splitters = splitterApplyColorSalt(splitters, color);
 
     if (is_zero) {
         return splitColorZeroPath(color, splitters);
     }
-
-    splitters = splitterApplyColorSalt(splitters, color);
 
     const color_modifiers_flat = splitters[3 * 3];
 
@@ -2586,15 +2585,14 @@ pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
 fn splitColorSimplified(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
 
-    splitters = splitterRandomize(splitters);
+    const is_zero = std.mem.eql(u8, &splitters, &zero_splitters);
 
-    const is_zero = std.mem.indexOfNone(u8, &splitters, &.{0}) == null;
+    splitters = splitterRandomize(splitters);
+    splitters = splitterApplyColorSalt(splitters, color);
 
     if (is_zero) {
         return splitColorZeroPath(color, splitters);
     }
-
-    splitters = splitterApplyColorSalt(splitters, color);
 
     const color_modifiers_flat = splitters[3 * 3];
 
