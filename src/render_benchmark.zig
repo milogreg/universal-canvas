@@ -89,6 +89,8 @@ fn benchmarkDeepZoom(allocator: std.mem.Allocator) !u64 {
         next_state = temp;
     }
 
+    std.mem.doNotOptimizeAway(current_state.*);
+
     return timer.read();
 }
 
