@@ -240,6 +240,165 @@ const ArrayListDigitWriter = struct {
     }
 };
 
+const CommandStateEfficient = struct {
+    idx: Size,
+    ignore_count: IgnoreSize,
+    tag: CommandEnum,
+
+    const CommandEnum = enum(u8) {
+        set_position = 0,
+        set_linear_position = 1,
+        ignore_after = 2,
+        no_op = 3,
+    };
+
+    const Size = SelfConsumingReaderState.Size;
+    const IgnoreSize = SelfConsumingReaderState.IgnoreSize;
+
+    const size_bits = @typeInfo(Size).int.bits;
+    const ignore_size_bits = @typeInfo(IgnoreSize).int.bits;
+
+    fn idxTerminated(this: CommandStateEfficient) bool {
+        return this.idx >> (size_bits - 1) == 1;
+    }
+
+    fn ignoreCountTerminated(this: CommandStateEfficient) bool {
+        return this.ignore_count >> (ignore_size_bits - 1) == 1;
+    }
+
+    pub fn getIdx(this: CommandStateEfficient) Size {
+        return this.idx & ((1 << size_bits - 1) - 1);
+    }
+
+    pub fn getIgnoreCount(this: CommandStateEfficient) IgnoreSize {
+        return this.ignore_count & ((1 << ignore_size_bits - 1) - 1);
+    }
+
+    pub fn step(this: CommandStateEfficient, reader_state: *const SelfConsumingReaderState, digit: u2) CommandStateEfficient {
+        var res = this;
+
+        if (!this.idxTerminated()) {
+            if (digit == 3) {
+                res.idx |= @as(Size, 1) << (size_bits - 1);
+            } else {
+                const with_digit = this.idx * 3 + digit;
+
+                if (with_digit < reader_state.digit_count + 2) {
+                    res.idx = with_digit;
+                }
+            }
+        } else if (!this.ignoreCountTerminated()) {
+            if (digit == 3) {
+                res.ignore_count |= @as(IgnoreSize, 1) << (ignore_size_bits - 1);
+            } else {
+                const with_digit = @as(Size, this.ignore_count) * 3 + digit;
+
+                if (with_digit < std.math.log2(reader_state.digit_count)) {
+                    res.ignore_count = @intCast(with_digit);
+                }
+            }
+        }
+
+        return res;
+    }
+
+    fn stepBranchless(this: CommandStateEfficient, reader_state: *const SelfConsumingReaderState, digit: u2) CommandStateEfficient {
+        const idx_terminated = @intFromBool(this.idxTerminated());
+        const ignore_count_terminated = @intFromBool(this.ignoreCountTerminated());
+
+        const digit_is_3 = @intFromBool(digit == 3);
+
+        var res: CommandStateEfficient = this;
+
+        var idx_with_digit = res.idx;
+        idx_with_digit *%= 3;
+        idx_with_digit +%= digit;
+
+        const idx_overflow = @intFromBool(idx_with_digit >= reader_state.digit_count + 2);
+
+        if ((~idx_terminated) & (~digit_is_3) & (~idx_overflow) == 1) {
+            res.idx = idx_with_digit;
+        }
+
+        var res_ignore_count: Size = res.ignore_count;
+
+        var ignore_count_with_digit = res_ignore_count;
+        ignore_count_with_digit *%= 3;
+        ignore_count_with_digit +%= digit;
+
+        const ignore_count_overflow = @intFromBool(ignore_count_with_digit >= std.math.log2(reader_state.digit_count + 1));
+
+        if (idx_terminated & (~ignore_count_terminated) & (~digit_is_3) & (~ignore_count_overflow) == 1) {
+            res_ignore_count = ignore_count_with_digit;
+        }
+
+        res.ignore_count = @intCast(res_ignore_count);
+
+        if (digit_is_3 == 1) {
+            res.idx |= @as(Size, 1) << (size_bits - 1);
+        }
+
+        if (idx_terminated & digit_is_3 == 1) {
+            res.ignore_count |= @as(IgnoreSize, 1) << (ignore_size_bits - 1);
+        }
+
+        return res;
+    }
+
+    pub fn resultReady(this: CommandStateEfficient, reader_state: *const SelfConsumingReaderState) bool {
+        if (reader_state.ignore_count > 0 and reader_state.ignore_wait_count == 0) {
+            return false;
+        }
+
+        return switch (this.tag) {
+            .set_position => this.idxTerminated(),
+            .set_linear_position => this.idxTerminated(),
+            .ignore_after => this.idxTerminated() and this.ignoreCountTerminated(),
+            .no_op => true,
+        };
+    }
+
+    fn resultReadyBranchless(this: CommandStateEfficient, reader_state: *const SelfConsumingReaderState) bool {
+        const idx_terminated = @intFromBool(this.idxTerminated());
+        const ignore_count_terminated = @intFromBool(this.ignoreCountTerminated());
+
+        var res: u1 = 0;
+        res |= @intFromBool(this.tag == .ignore_after);
+        res &= idx_terminated;
+        res &= ignore_count_terminated;
+
+        res |= @intFromBool(@intFromEnum(this.tag) < 2);
+        res &= idx_terminated;
+
+        res |= @intFromBool(this.tag == .no_op);
+
+        res &= @intFromBool(reader_state.ignore_count == 0) | @intFromBool(reader_state.ignore_wait_count > 0);
+
+        return res == 1;
+    }
+
+    pub const initials: [4]CommandStateEfficient = blk: {
+        var initials_init: [4]CommandStateEfficient = undefined;
+        for (&initials_init, 0..) |*initial, i| {
+            const digit: u2 = i;
+            initial.* = .{
+                .idx = 0,
+                .ignore_count = 0,
+                .tag = switch (digit) {
+                    0 => .set_position,
+
+                    1 => .set_linear_position,
+
+                    2 => .ignore_after,
+
+                    3 => .no_op,
+                },
+            };
+        }
+        break :blk initials_init;
+    };
+};
+
 const CommandState = packed struct {
     command: Command,
     tag: CommandEnum,
@@ -256,7 +415,6 @@ const CommandState = packed struct {
     const Command = packed union {
         set_position: SetPosition,
         set_linear_position: SetLinearPosition,
-        // set_activation_digit: SetActivationDigit,
         ignore_after: IgnoreAfter,
 
         no_op: NoOp,
@@ -333,38 +491,6 @@ const CommandState = packed struct {
             }
         };
 
-        const SetActivationDigit = packed struct {
-            digit: u2,
-            terminated: bool,
-
-            pub const init: SetActivationDigit = .{
-                .digit = 0,
-                .terminated = false,
-            };
-
-            const Result = u2;
-
-            pub fn getResult(this: SetActivationDigit) Result {
-                return this.digit;
-            }
-
-            pub fn step(this: SetActivationDigit, reader_state: *const SelfConsumingReaderState, digit: u2) ?SetActivationDigit {
-                _ = reader_state; // autofix
-                if (this.terminated) {
-                    return null;
-                }
-                return .{
-                    .digit = digit,
-                    .terminated = true,
-                };
-            }
-
-            pub fn encode(writer: DigitWriter, result: Result) !void {
-                try writer.write(2);
-                try writer.write(result);
-            }
-        };
-
         const IgnoreAfter = packed struct {
             length_state: LengthState,
             ignore_count: u8,
@@ -387,6 +513,8 @@ const CommandState = packed struct {
             }
 
             pub fn step(this: IgnoreAfter, reader_state: *const SelfConsumingReaderState, digit: u2) ?IgnoreAfter {
+                if (true) @compileError("Don't use this");
+
                 if (this.length_state.terminated() and this.ignore_count != 0xFF) {
                     return null;
                 }
@@ -413,8 +541,8 @@ const CommandState = packed struct {
 
             pub fn encode(writer: DigitWriter, result: Result) !void {
                 try writer.write(2);
-                try LengthState.encode(writer, result.ignore_count);
                 try LengthState.encode(writer, result.wait_count);
+                try LengthState.encode(writer, result.ignore_count);
             }
         };
 
@@ -703,7 +831,7 @@ const CommandState = packed struct {
     }
 };
 
-pub const SelfConsumingReaderState = packed struct {
+pub const SelfConsumingReaderState = struct {
     position: Size,
 
     position_start: Size,
@@ -714,7 +842,7 @@ pub const SelfConsumingReaderState = packed struct {
 
     linear_position: Size,
 
-    command: CommandState,
+    command: CommandStateEfficient,
 
     position_layer: LayerSize,
     ignore_count: IgnoreSize,
@@ -739,8 +867,10 @@ pub const SelfConsumingReaderState = packed struct {
 
     pub fn init(digit_count: Size, color: Color) SelfConsumingReaderState {
         // @compileLog(@bitSizeOf(SelfConsumingReaderState));
+        // @compileLog(@sizeOf(SelfConsumingReaderState));
         // @compileLog(@offsetOf(SelfConsumingReaderState, "position"), @bitOffsetOf(SelfConsumingReaderState, "position"));
-        var res: SelfConsumingReaderState = .{
+
+        return .{
             .position = 0,
 
             .position_layer = 0,
@@ -750,16 +880,13 @@ pub const SelfConsumingReaderState = packed struct {
             .digit_count = digit_count,
             .color = colorToArr(color),
 
-            .command = undefined,
+            .command = CommandStateEfficient.initials[0],
 
             .ignore_wait_count = 0,
             .ignore_count = 0,
 
             .linear_position = null_linear_position,
         };
-
-        res.command = CommandState.newCommand(&res, 0);
-        return res;
     }
 
     fn setDigitIdx(this: *SelfConsumingReaderState, digit_idx: Size) void {
@@ -798,6 +925,26 @@ pub const SelfConsumingReaderState = packed struct {
         this.position_layer = layer;
     }
 
+    fn layerUnderDigitIdx(digit_idx: Size) LayerSize {
+        const adjusted_digit_idx = (digit_idx) / EncodedChunk.digits_per_chunk;
+
+        comptime var mask: Size = 0;
+        const mask_bits: ShiftSize = @typeInfo(Size).int.bits - 1;
+        inline for (0..mask_bits) |i| {
+            if (i & 1 == (~@typeInfo(Size).int.bits) & 1) {
+                mask |= 1 << i;
+            }
+        }
+
+        inline for (1..mask_bits / 2) |i| {
+            if (adjusted_digit_idx < mask >> (mask_bits - i * 2)) {
+                return i - 1;
+            }
+        }
+
+        unreachable;
+    }
+
     fn offsetFromLayer(layer: LayerSize) Size {
         //     var pow: usize = 1;
         //     var sum: usize = 0;
@@ -827,68 +974,114 @@ pub const SelfConsumingReaderState = packed struct {
     fn iterateNoColor(noalias this: *const SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray, noalias next: *SelfConsumingReaderState) void {
         std.debug.assert(this.digit_count > 0);
 
+        next.linear_position = null_linear_position;
+
+        if (this.linear_position != null_linear_position) {
+            const next_linear_position = this.linear_position + 1 + EncodedChunk.digits_per_chunk;
+            if (next_linear_position < this.digit_count and digits.get(this.linear_position) == selector_digit) {
+                next.linear_position = next_linear_position;
+            }
+        }
+
         const modulo = this.digit_count - this.position_start;
 
         std.debug.assert(this.position + offsetFromLayer(this.position_layer) < modulo);
 
         const next_position = this.position * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
-
         const next_offset = offsetFromLayer(this.position_layer + 1);
 
-        if (next_position + next_offset >= modulo) {
-            const next_digit_idx = lcgInRange(next_position + next_offset, modulo);
-            // const next_digit_idx = clampWrap(next_position + next_offset, modulo);
-            next.setDigitIdx(next_digit_idx);
-        } else {
-            next.position = next_position;
-            next.position_layer = this.position_layer + 1;
-        }
+        const overflow_digit_idx = lcgInRange(next_position + next_offset, modulo);
+        const overflow_layer = layerUnderDigitIdx(overflow_digit_idx);
+        const overflow_position = overflow_digit_idx - offsetFromLayer(overflow_layer);
 
-        const command_result = this.command.step(this, selector_digit);
-
-        next.command = command_result.next;
+        const will_overflow = next_position + next_offset >= modulo;
 
         next.position_start = this.position_start;
+        next.position = if (will_overflow) overflow_position else next_position;
+        next.position_layer = if (will_overflow) overflow_layer else this.position_layer + 1;
 
-        next.linear_position = null_linear_position;
+        const ignore_waiting = @intFromBool(this.ignore_wait_count > 0);
+        const has_ignore = @intFromBool(this.ignore_count > 0);
 
-        next.ignore_count = this.ignore_count - @intFromBool(this.ignore_count > 0 and this.ignore_wait_count == 0);
+        next.ignore_wait_count = this.ignore_wait_count - ignore_waiting;
+        next.ignore_count = this.ignore_count - ((~ignore_waiting) & has_ignore);
 
-        next.ignore_wait_count = this.ignore_wait_count -| @intFromBool(this.ignore_wait_count > 0);
+        if (this.command.resultReady(this)) {
+            const idx = this.command.getIdx();
+            const ignore_count = this.command.getIgnoreCount();
+            const tag = this.command.tag;
 
-        if (this.linear_position != null_linear_position) {
-            const next_linear_position = this.linear_position + 1 + EncodedChunk.digits_per_chunk;
-            if (digits.get(this.linear_position) == selector_digit and next_linear_position < this.digit_count) {
-                next.linear_position = next_linear_position;
+            const set_position = @intFromBool(tag == .set_position) & @intFromBool(selector_digit == 0);
+            const set_linear_position = @intFromBool(tag == .set_linear_position) & @intFromBool(selector_digit == 0);
+            const ignore_after = @intFromBool(tag == .ignore_after);
+
+            std.debug.assert(this.command.tag == .no_op or this.digit_count >= idx + 1);
+
+            const relative_idx = this.digit_count -% 1 -% idx;
+
+            if (set_position == 1) {
+                next.position_start = relative_idx;
+                next.position = 0;
+                next.position_layer = 0;
             }
+
+            if (set_linear_position == 1) {
+                next.linear_position = relative_idx;
+            }
+
+            if (ignore_after == 1) {
+                next.ignore_count = ignore_count;
+                next.ignore_wait_count = idx;
+            }
+
+            next.command = CommandStateEfficient.initials[selector_digit];
+        } else {
+            next.command = this.command.step(this, selector_digit);
         }
 
-        switch (command_result.result) {
-            .none, .no_op => {},
+        // if (this.command.resultReady(this)) {
+        //     switch (this.command.tag) {
+        //         .no_op => {},
 
-            .set_position => |set_position| {
-                if (selector_digit == 0) {
-                    next.position_start = this.digit_count - 1 - set_position;
+        //         .set_position => {
+        //             const set_position = this.command.getIdx();
 
-                    next.position = 0;
-                    next.position_layer = 0;
-                }
-            },
-            .set_linear_position => |set_linear_position| {
-                if (selector_digit == 0) {
-                    next.linear_position = this.digit_count - 1 - set_linear_position;
-                }
-            },
-            .ignore_after => |ignore_after| {
-                next.ignore_count = @intCast(ignore_after.ignore_count);
-                next.ignore_wait_count = ignore_after.wait_count;
-            },
-        }
+        //             if (selector_digit == 0) {
+        //                 next.position_start = this.digit_count - 1 - set_position;
+
+        //                 next.position = 0;
+        //                 next.position_layer = 0;
+        //             }
+        //         },
+        //         .set_linear_position => {
+        //             const set_linear_position = this.command.getIdx();
+
+        //             if (selector_digit == 0) {
+        //                 next.linear_position = this.digit_count - 1 - set_linear_position;
+        //             }
+        //         },
+        //         .ignore_after => {
+        //             next.ignore_count = @intCast(this.command.getIgnoreCount());
+        //             next.ignore_wait_count = this.command.getIdx();
+        //         },
+        //     }
+
+        //     next.command = CommandStateEfficient.initials[selector_digit];
+        // } else {
+        //     next.command = this.command.step(this, selector_digit);
+        // }
 
         next.digit_count = this.digit_count + 1;
     }
 
     fn iterateNoColorMutate(this: *SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray) void {
+        if (true) {
+            const next: SelfConsumingReaderState = undefined;
+            this.iterateNoColor(selector_digit, digits, &next);
+            this.* = next;
+            return;
+        }
+
         std.debug.assert(this.digit_count > 0);
 
         const modulo = this.digit_count - this.position_start;
@@ -956,13 +1149,13 @@ pub const SelfConsumingReaderState = packed struct {
     }
 
     pub fn iterateAllNoColor(noalias this: *const SelfConsumingReaderState, digits: VirtualDigitArray, noalias res: *[4]SelfConsumingReaderState) void {
-        // if (true) {
-        //     for (0..4) |i| {
-        //         this.iterateNoColor(@intCast(i), digits, &res[i]);
-        //     }
+        if (true) {
+            for (0..4) |i| {
+                this.iterateNoColor(@intCast(i), digits, &res[i]);
+            }
 
-        //     return;
-        // }
+            return;
+        }
 
         std.debug.assert(this.digit_count > 0);
 
@@ -1034,6 +1227,7 @@ pub const SelfConsumingReaderState = packed struct {
 
     pub fn iterate(noalias this: *const SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray, noalias res: *SelfConsumingReaderState) void {
         if (this.digit_count == 0) {
+            @branchHint(.unlikely);
             res.* = this.*;
             res.digit_count = 1;
 
