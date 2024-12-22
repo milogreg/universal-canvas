@@ -990,15 +990,28 @@ pub const SelfConsumingReaderState = struct {
         const next_position = this.position * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
         const next_offset = offsetFromLayer(this.position_layer + 1);
 
-        const overflow_digit_idx = lcgInRange(next_position + next_offset, modulo);
-        const overflow_layer = layerUnderDigitIdx(overflow_digit_idx);
-        const overflow_position = overflow_digit_idx - offsetFromLayer(overflow_layer);
+        // const overflow_digit_idx = lcgInRange(next_position + next_offset , modulo);
+
+        // const overflow_layer = layerUnderDigitIdx(overflow_digit_idx);
+        // const overflow_position = overflow_digit_idx - offsetFromLayer(overflow_layer);
+
+        // const will_overflow = next_position + next_offset >= modulo;
+
+        // next.position_start = this.position_start;
+        // next.position = if (will_overflow) overflow_position else next_position;
+        // next.position_layer = if (will_overflow) overflow_layer else this.position_layer + 1;
 
         const will_overflow = next_position + next_offset >= modulo;
 
-        next.position_start = this.position_start;
-        next.position = if (will_overflow) overflow_position else next_position;
-        next.position_layer = if (will_overflow) overflow_layer else this.position_layer + 1;
+        next.position_start = if (will_overflow and this.position_start == 0)
+            this.digit_count
+        else if (will_overflow and this.position_start > 0)
+            this.position_start - 1
+        else
+            this.position_start;
+
+        next.position = if (will_overflow) 0 else next_position;
+        next.position_layer = if (will_overflow) 0 else this.position_layer + 1;
 
         const ignore_waiting = @intFromBool(this.ignore_wait_count > 0);
         const has_ignore = @intFromBool(this.ignore_count > 0);
@@ -1241,6 +1254,7 @@ pub const SelfConsumingReaderState = struct {
 
     pub fn iterateMutate(noalias this: *SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray) void {
         if (this.digit_count == 0) {
+            @branchHint(.unlikely);
             this.digit_count = 1;
 
             return;
@@ -1253,6 +1267,7 @@ pub const SelfConsumingReaderState = struct {
 
     pub fn iterateAll(this: *const SelfConsumingReaderState, digits: VirtualDigitArray, res: *[4]SelfConsumingReaderState) void {
         if (this.digit_count == 0) {
+            @branchHint(.unlikely);
             res.* = @splat(this.*);
             for (res) |*res_val| {
                 res_val.digit_count = 1;
@@ -2398,7 +2413,7 @@ pub fn encodeColors(allocator: std.mem.Allocator, colors: []const Color) !DigitA
     // std.debug.assert(total_digits == digit_idx * EncodedChunk.digits_per_chunk);
 
     // TODO calculate actual minimum for this value
-    const padding_count = std.math.log2(digits.length) + 16;
+    const padding_count = std.math.log2(digits.length) + 64;
 
     // TODO calculate actual minimum for this value
     const base_3_max_digits = 20;
@@ -2795,139 +2810,86 @@ pub fn encodeColorSearch(writer: DigitWriter, digit_path: []const u2, current_co
     try encodeColorSearch(writer, digit_path[1..], target_colors[target_color_digit], target_color_arg);
 }
 
-// const splitter_salt = blk: {
-//     var splitter_salt_digits: [3 * 4]u2 = undefined;
-
-//     for (&splitter_salt_digits, 0..) |*digit, i| {
-//         digit.* = @truncate(i + 3);
-//     }
-
-//     var base_salt: [3]u8 = undefined;
-
-//     for (&base_salt, 0..) |*salt, i| {
-//         salt.* = 0;
-//         for (0..4) |j| {
-//             salt.* |= @as(u8, splitter_salt_digits[i * 4 + j]) << @intCast(j * 2);
-//         }
-//     }
-
-//     break :blk (base_salt ** 3) ++ [_]u8{50};
-// };
-
-const splitter_salt: [10]u8 = ([_]u8{ 0b11001111, 0b11011110, 0b01011110 } ** 3) ++ [_]u8{0};
-
-// const splitter_salt = blk: {
-//     var splitter_salt_init: [10]u8 = undefined;
-//     _ = &splitter_salt_init; // autofix
-//     var prng = std.Random.DefaultPrng.init(1322);
-//     const random = prng.random();
-
-//     for (&splitter_salt_init) |*salt| {
-//         salt.* = random.int(u8);
-//     }
-
-//     break :blk splitter_salt_init;
-
-//     // var bit_indices: [8]u3 = undefined;
-//     // for (&bit_indices, 0..) |*idx, i| {
-//     //     idx.* = i;
-//     // }
-
-//     // @setEvalBranchQuota(100000);
-
-//     // random.shuffle(u3, &bit_indices);
-
-//     // for (bit_indices[0..1]) |bit_idx| {
-//     //     base_salt |= @as(u8, 1) << bit_idx;
-//     // }
-
-//     // var base_salt: [3]u8 = undefined;
-
-//     // random.bytes(&base_salt);
-
-//     // break :blk (base_salt ** 2) ++ [_]u8{ 100, 100, 100 } ++ [_]u8{0};
-// };
-
 const zero_splitters = blk: {
     var zero_splitters_init: [10]u8 = @splat(0);
     zero_splitters_init[0..9].* = @splat(128);
     zero_splitters_init[9] = 0b111111;
 
-    zero_splitters_init = splitterRandomizeInverse(zero_splitters_init);
-
     break :blk zero_splitters_init;
 };
 
-fn splitterRandomize(splitters: [10]u8) [10]u8 {
-    const salt_vec: @Vector(9, u8) = splitter_salt[0..9].*;
-
-    var res_vec: @Vector(9, u8) = splitters[0..9].*;
-
-    res_vec ^= salt_vec;
-
-    res_vec = std.simd.rotateElementsLeft(res_vec, 4);
-
-    res_vec ^= salt_vec;
-
-    var res_splitters: [10]u8 = undefined;
-
-    res_splitters[0..9].* = res_vec;
-    res_splitters[9] = splitters[9];
-
-    return res_splitters;
+fn hash32(x: u32) u32 {
+    return x *% 1664525;
 }
 
-fn splitterRandomizeInverse(splitters: [10]u8) [10]u8 {
-    const salt_vec: @Vector(9, u8) = splitter_salt[0..9].*;
-
-    var res_vec: @Vector(9, u8) = splitters[0..9].*;
-
-    res_vec ^= salt_vec;
-
-    res_vec = std.simd.rotateElementsRight(res_vec, 4);
-
-    res_vec ^= salt_vec;
-
-    var res_splitters: [10]u8 = undefined;
-
-    res_splitters[0..9].* = res_vec;
-    res_splitters[9] = splitters[9];
-
-    return res_splitters;
+fn hash32Inverse(x: u32) u32 {
+    return x *% 4276115653;
 }
 
-// fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
-//     var res_splitters = splitters;
+const hash72_increment = 2534895234121;
 
-//     // if (isZeroSplitter(splitters)) {
-//     //     return splitters;
-//     // }
+fn hash72(x: u72) u72 {
+    comptime var mul: u72 = 0;
+    // mul  = 18519084246547628289
+    inline for (0..72 / 8) |i| {
+        mul |= (0b1) << (i * 8);
+    }
 
-//     var mask: u8 = @intFromBool(isZeroSplitter(splitters));
-//     mask -%= 1;
+    const res = (x *% 12157665459056928801) +% hash72_increment;
 
-//     for (res_splitters[0..9], 0..) |*splitter, i| {
-//         splitter.* ^= std.math.rotr(u8, color[i % 3], 4) & mask;
-//     }
+    // const res = (x *% mul) +% hash72_increment;
 
-//     return res_splitters;
-// }
+    std.debug.assert(x == hash72Inverse(res));
+
+    return res;
+}
+
+fn hash72Inverse(x: u72) u72 {
+    return (x -% hash72_increment) *% 4679407515872480828385;
+
+    // return (x -% hash72_increment) *% 4722366482869645213441;
+}
 
 fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
     if (isZeroSplitter(splitters)) {
         return splitters;
     }
 
-    const color_modified = std.math.rotr(@Vector(3, u8), color, 4);
+    var res: [10]u8 = undefined;
+    var res_int = std.mem.readInt(u72, splitters[0..9], .little);
+    res_int = res_int;
 
-    const color_vec = std.simd.join(std.simd.repeat(9, color_modified), @as(@Vector(1, u8), [_]u8{0}));
-    const splitter_vec: @Vector(10, u8) = splitters;
+    res_int ^= std.mem.readInt(u24, &color, .little);
 
-    return splitter_vec ^ color_vec;
+    res_int = hash72(res_int);
+
+    std.mem.writeInt(u72, res[0..9], res_int, .little);
+    res[9] = splitters[9];
+
+    return res;
+}
+
+fn splitterApplyColorSaltInverse(splitters: [10]u8, color: [3]u8) [10]u8 {
+    if (isZeroSplitter(splitters)) {
+        return splitters;
+    }
+
+    var res: [10]u8 = undefined;
+    var res_int = std.mem.readInt(u72, splitters[0..9], .little);
+    res_int = res_int;
+
+    res_int = hash72Inverse(res_int);
+
+    res_int ^= std.mem.readInt(u24, &color, .little);
+
+    std.mem.writeInt(u72, res[0..9], res_int, .little);
+    res[9] = splitters[9];
+
+    return res;
 }
 
 fn isZeroSplitter(splitters: [10]u8) bool {
-    return splittersEqual(splitters, comptime splitterRandomize(zero_splitters));
+    return splittersEqual(splitters, zero_splitters);
 }
 
 fn splittersEqual(a: [10]u8, b: [10]u8) bool {
@@ -2937,12 +2899,11 @@ fn splittersEqual(a: [10]u8, b: [10]u8) bool {
 pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
 
-    splitters = splitterRandomize(splitters);
     splitters = splitterApplyColorSalt(splitters, color);
 
     const color_modifiers_flat = splitters[3 * 3];
 
-    var total_color_upper_bits: u16 = 0;
+    var total_color_bits_ored: u16 = 0;
 
     var res_colors: [4][3]u8 = undefined;
 
@@ -2960,14 +2921,14 @@ pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
 
         const total_color_component_bits: u16 = @bitCast(total_color_component);
 
-        total_color_upper_bits |= (total_color_component_bits >> 8);
+        total_color_bits_ored |= total_color_component_bits;
 
         res_colors[3][i] = @truncate(total_color_component_bits);
 
         res_colors[i] = splitters[i * 3 ..][0..3].*;
     }
 
-    if (total_color_upper_bits != 0) {
+    if (total_color_bits_ored >> 8 != 0) {
         if (isZeroSplitter(splitters)) {
             return splitColorZeroPath(color, splitters);
         }
@@ -2983,7 +2944,6 @@ pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
 fn splitColorSimd(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
 
-    splitters = splitterRandomize(splitters);
     splitters = splitterApplyColorSalt(splitters, color);
 
     const color_modifiers_flat = splitters[3 * 3];
@@ -3043,7 +3003,6 @@ fn splitColorSimd(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
 fn splitColorSimplified(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     var splitters = splitters_arg;
 
-    splitters = splitterRandomize(splitters);
     splitters = splitterApplyColorSalt(splitters, color);
 
     const color_modifiers_flat = splitters[3 * 3];
@@ -3102,12 +3061,23 @@ fn splitColorZeroPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
 
         const altered_color_component: u8 = @intCast(total_color_component / 3);
         var target: i16 = @intCast(total_color_component % 3);
+
+        if (true) {
+            for (0..3) |j| {
+                res_colors[j + 1][i] = altered_color_component;
+                if (j < target) {
+                    res_colors[j + 1][i] += 1;
+                }
+            }
+
+            continue;
+        }
+
         if (altered_color_component >= 128) {
             target = -target;
         }
 
-        var splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
-        splitter_code = lcg32(splitter_code);
+        const splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
 
         const base = if (altered_color_component < 128) @as(u16, altered_color_component) + 1 else 256 - @as(u16, altered_color_component);
 
@@ -3121,7 +3091,7 @@ fn splitColorZeroPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
         const min_diff: u8 = @bitCast(@as(i8, @intCast(@divFloor(target, 3))));
         const excess_diff = @mod(target, 3);
 
-        const extra_code = lcg32(splitter_code);
+        const extra_code = splitter_code;
 
         var excess_idx: usize = extra_code % 3;
 
@@ -3150,9 +3120,7 @@ fn splitColorAltPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
     for (0..3) |i| {
         const color_component = color[i];
 
-        var splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
-
-        splitter_code = lcg32(splitter_code);
+        const splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
 
         // min for color_component less than: 110
         // max for color_component less than: 146
@@ -3162,12 +3130,12 @@ fn splitColorAltPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
         var diffs: [4]u8 = undefined;
 
         for (&diffs, 0..) |*diff, j| {
-            const splitter_code_component: u8 = @truncate(splitter_code >> @intCast(j * 8));
-            diff.* = @intCast((@as(u16, splitter_code_component) * @as(u16, base)) >> 8);
+            const splitter_code_component: u6 = @truncate(splitter_code >> @intCast(j * 6));
+            diff.* = @intCast((@as(u16, splitter_code_component) * @as(u16, base)) >> 6);
             target += diff.*;
         }
 
-        const extra_code = lcg32(splitter_code);
+        const extra_code = splitter_code;
 
         // Adds 1 to total if color_component < 128, subtracts 1 otherwise.
         target += 1;
@@ -3200,8 +3168,6 @@ fn splitColorAltPathSimd(color: [3]u8, splitters: [10]u8) [4][3]u8 {
         splitter_code_vec[i] = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
     }
 
-    splitter_code_vec = lcg32Vec(splitter_code_vec);
-
     var base_vec1: @Vector(3, i16) = color_component_vec;
     base_vec1 += @splat(1);
 
@@ -3219,12 +3185,12 @@ fn splitColorAltPathSimd(color: [3]u8, splitters: [10]u8) [4][3]u8 {
 
     for (0..4) |i| {
         var splitter_code_component_vec = splitter_code_vec;
-        splitter_code_component_vec >>= @splat(@intCast(i * 8));
-        splitter_code_component_vec &= @splat(0xFF);
+        splitter_code_component_vec >>= @splat(@intCast(i * 6));
+        splitter_code_component_vec &= @splat((1 << 6) - 1);
 
         var diff: @Vector(3, u16) = @intCast(splitter_code_component_vec);
         diff *= base_vec;
-        diff >>= @splat(8);
+        diff >>= @splat(6);
 
         diffs_vec[i] = @intCast(diff);
         target_vec += diff;
@@ -3234,7 +3200,7 @@ fn splitColorAltPathSimd(color: [3]u8, splitters: [10]u8) [4][3]u8 {
     var excess_diff_vec = target_vec;
     excess_diff_vec %= @splat(4);
 
-    const extra_code_vec = lcg32Vec(splitter_code_vec);
+    const extra_code_vec = splitter_code_vec;
     var excess_idx_vec = extra_code_vec;
     excess_idx_vec %= @splat(4);
 
@@ -3325,8 +3291,7 @@ fn getSplitters(parent_color: Color, child_colors: [4]Color) [10]u8 {
         }
     }
 
-    splitters = splitterApplyColorSalt(splitters, color);
-    splitters = splitterRandomizeInverse(splitters);
+    splitters = splitterApplyColorSaltInverse(splitters, color);
 
     const tester = splitColor(color, splitters);
     if (!std.mem.eql([3]u8, &child_colors_arr, &tester)) {
@@ -3384,6 +3349,15 @@ fn lcg32(x: u32) u32 {
 
     res *%= 1664525;
     res +%= 1013904223;
+
+    return res;
+}
+
+fn lcg32Inverse(x: u32) u32 {
+    var res = x;
+
+    res -%= 1013904223;
+    res *%= 4276115653;
 
     return res;
 }

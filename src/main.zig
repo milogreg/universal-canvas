@@ -103,10 +103,17 @@ const iteration_rate = 300;
 var state_iteration_count: usize = 0;
 var iteration_done: bool = false;
 
+// const root_color: render.Color = .{
+//     .r = 50,
+//     .g = 50,
+//     .b = 50,
+//     .a = 255,
+// };
+
 const root_color: render.Color = .{
-    .r = 50,
-    .g = 50,
-    .b = 50,
+    .r = 128,
+    .g = 128,
+    .b = 128,
     .a = 255,
 };
 
@@ -1242,9 +1249,9 @@ export fn init() void {
     //     state_tree.appendDigit(i, 0) catch @panic("OOM");
     // }
 
-    // for (0..10000) |_| {
+    // for (0..1000000) |_| {
     //     for (0..4) |i| {
-    //         state_tree.appendDigit(i, 3) catch @panic("OOM");
+    //         state_tree.appendDigit(i, 1) catch @panic("OOM");
     //     }
     // }
 
