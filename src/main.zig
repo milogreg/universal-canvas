@@ -1249,9 +1249,9 @@ export fn init() void {
     //     state_tree.appendDigit(i, 0) catch @panic("OOM");
     // }
 
-    // for (0..1000000) |_| {
+    // for (0..100000) |_| {
     //     for (0..4) |i| {
-    //         state_tree.appendDigit(i, 1) catch @panic("OOM");
+    //         state_tree.appendDigit(i, 3) catch @panic("OOM");
     //     }
     // }
 
@@ -1371,7 +1371,11 @@ export fn findImage() void {
     backup_client.zoom = 1;
     parent_square_size = 64;
 
-    backup_client.move(@as(f64, @floatFromInt(backup_client.canvas_width)) / 4.0, @as(f64, @floatFromInt(backup_client.canvas_height)) / 4.0);
+    backup_client.updatePosition(
+        @as(f64, @floatFromInt(backup_client.canvas_width)) / 2.0,
+        @as(f64, @floatFromInt(backup_client.canvas_height)) / 2.0,
+        0.5,
+    );
 
     offset_initial_states = @splat(null);
 

@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     exe.rdynamic = true;
 
     exe.stack_size = std.wasm.page_size * 2;
-    exe.initial_memory = std.wasm.page_size * 64 * 64;
+    exe.initial_memory = std.wasm.page_size * 4;
     exe.max_memory = std.wasm.page_size * 1024 * 64;
 
     const bin_dir = std.Build.InstallDir.bin;
@@ -79,8 +79,8 @@ pub fn build(b: *std.Build) void {
     check_exe.entry = .disabled;
     check_exe.rdynamic = true;
 
-    check_exe.stack_size = std.wasm.page_size * 16;
-    check_exe.initial_memory = std.wasm.page_size * 1024;
+    check_exe.stack_size = std.wasm.page_size * 2;
+    check_exe.initial_memory = std.wasm.page_size * 4;
     check_exe.max_memory = std.wasm.page_size * 1024 * 64;
 
     const check_step = b.step("check", "check compilation");
