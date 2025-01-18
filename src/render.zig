@@ -285,23 +285,21 @@ const ArrayListDigitWriter = struct {
     //     }
     // }
 
-    pub fn writer(this: *ArrayListDigitWriter) DigitWriter {
-        return .{ .ptr = this, .vtable = .{
+    pub fn writer(this: *const ArrayListDigitWriter) DigitWriter {
+        return .{ .ptr = this.list, .vtable = .{
             .write = write,
         } };
     }
 
     pub fn write(ptr: *anyopaque, digit: u2) std.mem.Allocator.Error!void {
-        const this: *ArrayListDigitWriter = @alignCast(@ptrCast(ptr));
+        const this: *std.ArrayList(u2) = @alignCast(@ptrCast(ptr));
 
-        try this.list.append(digit);
+        try this.append(digit);
     }
 };
 
 pub const SelfConsumingReaderState = struct {
     position_start: Size,
-
-    position_layer: LayerSize,
 
     position: Size,
 
@@ -313,13 +311,11 @@ pub const SelfConsumingReaderState = struct {
 
     const Size = u32;
 
-    const LayerSize = std.math.IntFittingRange(0, (@typeInfo(Size).int.bits - 1) / 2 + 1);
+    const LayerSize = std.math.IntFittingRange(0, (@typeInfo(Size).int.bits - 1) / 2);
 
-    // const LayerSize = std.math.ByteAlignedInt(std.math.IntFittingRange(0, (@typeInfo(Size).int.bits - 1) / 2 + 1));
+    // const LayerSize = std.math.ByteAlignedInt(std.math.IntFittingRange(0, (@typeInfo(Size).int.bits - 1) / 2 ));
 
     const ShiftSize = std.math.Log2Int(Size);
-
-    const null_layer = std.math.maxInt(LayerSize);
 
     pub fn init(digit_count: Size, color: Color) SelfConsumingReaderState {
         // @compileLog(@bitSizeOf(SelfConsumingReaderState));
@@ -328,8 +324,6 @@ pub const SelfConsumingReaderState = struct {
 
         return .{
             .position = 0,
-
-            .position_layer = 0,
 
             .position_start = 0,
 
@@ -341,7 +335,7 @@ pub const SelfConsumingReaderState = struct {
         };
     }
 
-    fn layerUnderDigitIdx(digit_idx: Size) LayerSize {
+    fn layerUnderDigitIdxOld(digit_idx: Size) LayerSize {
         const adjusted_digit_idx = (digit_idx) / EncodedChunk.digits_per_chunk;
 
         comptime var mask: Size = 0;
@@ -352,13 +346,85 @@ pub const SelfConsumingReaderState = struct {
             }
         }
 
-        inline for (1..mask_bits / 2) |i| {
-            if (adjusted_digit_idx < mask >> (mask_bits - i * 2)) {
-                return i - 1;
+        for (1..mask_bits / 2) |i| {
+            if (adjusted_digit_idx < mask >> @intCast(mask_bits - i * 2)) {
+                return @intCast(i - 1);
             }
         }
 
         unreachable;
+
+        // var res: LayerSize = 0;
+
+        // inline for (1..mask_bits / 2) |i| {
+        //     const mask_shifted = mask >> @intCast(mask_bits - i * 2);
+        //     res += @intFromBool(adjusted_digit_idx >= mask_shifted);
+        // }
+
+        // return res;
+    }
+
+    pub fn layerUnderDigitIdx(digit_idx: Size) LayerSize {
+        comptime var mask: Size = 0;
+        const mask_bits: ShiftSize = @typeInfo(Size).int.bits - 1;
+        inline for (0..mask_bits) |i| {
+            if (i & 1 == (~@typeInfo(Size).int.bits) & 1) {
+                mask |= 1 << i;
+            }
+        }
+
+        const scaled_zero_pos: ShiftSize = @intCast(@typeInfo(Size).int.bits - @clz(digit_idx));
+
+        var mask_shifted = mask >> 4;
+        mask_shifted >>= (mask_bits - scaled_zero_pos);
+
+        const offset = mask_shifted * EncodedChunk.digits_per_chunk;
+
+        var res: Size = scaled_zero_pos;
+        res -|= 5;
+        if (offset <= digit_idx) {
+            res += 1;
+        }
+
+        res /= 2;
+
+        // std.debug.assert(layerUnderDigitIdxOld(digit_idx) == res);
+        return @intCast(res);
+    }
+
+    // pub fn layerUnderDigitIdx(digit_idx: Size) LayerSize {
+    //     const adjusted_digit_idx = (digit_idx) / EncodedChunk.digits_per_chunk;
+
+    //     comptime var mask: Size = 0;
+    //     const mask_bits: ShiftSize = @typeInfo(Size).int.bits - 1;
+    //     inline for (0..mask_bits) |i| {
+    //         if (i & 1 == (~@typeInfo(Size).int.bits) & 1) {
+    //             mask |= 1 << i;
+    //         }
+    //     }
+
+    //     const first_zero_pos: ShiftSize = @intCast(@typeInfo(Size).int.bits - @clz(adjusted_digit_idx));
+
+    //     var shift: ShiftSize = mask_bits - 1;
+    //     shift -= first_zero_pos;
+
+    //     var mask_shifted = mask;
+    //     mask_shifted >>= shift;
+
+    //     var res: Size = first_zero_pos;
+    //     res += @intFromBool(adjusted_digit_idx >= mask_shifted);
+    //     res /= 2;
+
+    //     // std.debug.assert(layerUnderDigitIdxOld(digit_idx) == res);
+    //     return @intCast(res);
+    // }
+
+    // pub fn absolutePosition(this: *const SelfConsumingReaderState) Size {
+    //     return this.position_start + this.position + offsetFromLayer(this.position_layer);
+    // }
+
+    pub fn absolutePosition(this: *const SelfConsumingReaderState) Size {
+        return this.position_start + this.position;
     }
 
     fn offsetFromLayer(layer: LayerSize) Size {
@@ -387,88 +453,107 @@ pub const SelfConsumingReaderState = struct {
         return sum;
     }
 
+    fn valid(this: *const SelfConsumingReaderState) bool {
+        return this.digit_count == 0 or this.absolutePosition() < this.digit_count;
+    }
+
     fn iterateNoColor(noalias this: *const SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray, noalias next: *SelfConsumingReaderState) void {
-        const linear = this.position_layer == null_layer;
+        _ = digits; // autofix
+        // if (true) return this.iterateNoColorBranchless(selector_digit, digits, next);
 
-        std.debug.assert(linear or this.position_start + this.position + offsetFromLayer(this.position_layer) <= this.digit_count);
+        std.debug.assert(this.valid());
 
-        const next_digit_count = this.digit_count + 1;
+        const layer = layerUnderDigitIdx(this.position);
 
-        const next_position_start = this.next_position_start * 3 + selector_digit;
-        if (next_position_start >= next_digit_count or selector_digit == 3) {
-            next.next_position_start = 0;
-        } else {
-            next.next_position_start = next_position_start;
-        }
-        next.digit_count = next_digit_count;
+        const offset = offsetFromLayer(layer);
 
-        if (linear) {
-            // const next_linear_position = this.position + 1 + EncodedChunk.digits_per_chunk;
-            // if (selector_digit == 3) {
-            //     next.position_start = this.digit_count - 1 - this.next_position_start;
-            //     next.position = 0;
-            //     next.position_layer = 0;
-            // } else if (this.position_start + next_linear_position < next_digit_count and digits.get(this.position_start + this.position) == selector_digit) {
-            //     next.position = next_linear_position;
-            //     next.position_start = this.position_start;
-            //     next.position_layer = null_layer;
-            // } else {
-            //     next.position = 0;
-            //     next.position_start = this.digit_count;
-            //     next.position_layer = null_layer;
-            // }
+        const next_offset = offsetFromLayer(layer + 1);
 
-            const next_linear_position = this.position + 1 + EncodedChunk.digits_per_chunk;
-            if (selector_digit != 3 and this.position_start + next_linear_position < next_digit_count and digits.get(this.position_start + this.position) == selector_digit) {
-                next.position = next_linear_position;
-                next.position_start = this.position_start;
-                next.position_layer = null_layer;
-            } else {
-                const encoded_position_start = this.digit_count - 1 - this.next_position_start;
-                const junk_position_start = this.digit_count;
-                next.position_start = if (selector_digit == 3) encoded_position_start else junk_position_start;
+        const modulo = ((this.digit_count - this.position_start) + 1);
 
-                next.position = 0;
+        const position_without_offset = this.position - offset;
 
-                next.position_layer = if (selector_digit == 3) 0 else null_layer;
+        const next_position = next_offset + position_without_offset * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
+
+        const will_overflow_position = next_position >= modulo;
+
+        next.next_position_start = this.next_position_start *| 3 +| selector_digit;
+        next.position_start = this.position_start;
+        next.digit_count = this.digit_count + 1;
+        next.position = next_position;
+
+        if (will_overflow_position) {
+            if (selector_digit == 3) {
+                next.next_position_start = 0;
+                if (this.next_position_start <= this.digit_count) {
+                    next.position_start = this.digit_count - this.next_position_start;
+                    next.position = 0;
+                }
+            } else if (selector_digit == (position_without_offset & 1) + 1) {
+                if (position_without_offset >= EncodedChunk.digits_per_chunk) {
+                    next.position = this.position - EncodedChunk.digits_per_chunk;
+                } else {
+                    next.position = 0;
+                }
             }
-        } else {
-            // const next_position = this.position * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
-            // const next_offset = offsetFromLayer(this.position_layer + 1);
 
-            // const will_overflow_position = this.position_start + next_position + next_offset >= next_digit_count;
+            // const cond1 = (selector_digit == 3);
+            // const cond2 = (this.next_position_start <= this.digit_count);
+            // const cond3 = (selector_digit == ((position_without_offset) & 1) + 1);
+            // const cond4 = (position_without_offset >= EncodedChunk.digits_per_chunk);
 
-            // if (will_overflow_position) {
-            //     next.position = 0;
-            //     if (next_position == 0) {
-            //         next.position_start = this.position_start;
-            //     } else {
-            //         next.position_start = this.digit_count;
-            //     }
-            //     next.position_layer = null_layer;
-            // } else {
-            //     next.position = next_position;
-            //     next.position_start = this.position_start;
-            //     next.position_layer = this.position_layer + 1;
-            // }
+            // next.position_start = if (cond1 and cond2) this.digit_count - this.next_position_start else next.position_start;
 
-            const next_position = this.position * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
-            const next_offset = offsetFromLayer(this.position_layer + 1);
+            // next.next_position_start *= ~@intFromBool(cond1);
 
-            const will_overflow_position = this.position_start + next_position + next_offset >= next_digit_count;
+            // next.position = if (cond3 and cond4) this.position - EncodedChunk.digits_per_chunk else next.position;
+            // next.position *= ~@intFromBool(((cond1) and (cond2)) or ((cond3) and (!cond4)));
 
-            next.position = if (will_overflow_position) 0 else next_position;
-            const next_layer = this.position_layer + 1;
-            next.position_layer = if (will_overflow_position) null_layer else next_layer;
-
-            const next_overflow_position_start = if (next_position == 0) this.position_start else this.digit_count;
-
-            next.position_start = if (will_overflow_position) next_overflow_position_start else this.position_start;
+            next.position %= modulo;
         }
     }
 
+    fn iterateNoColorBranchless(noalias this: *const SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray, noalias next: *SelfConsumingReaderState) void {
+        _ = digits; // autofix
+        std.debug.assert(this.valid());
+
+        next.digit_count = this.digit_count + 1;
+
+        const layer = layerUnderDigitIdx(this.position);
+
+        const offset = offsetFromLayer(layer);
+
+        const next_offset = offsetFromLayer(layer + 1);
+
+        const position_without_offset = this.position - offset;
+
+        const next_position = next_offset + position_without_offset * 4 + (@as(Size, selector_digit) * EncodedChunk.digits_per_chunk);
+
+        const modulo = (this.digit_count - this.position_start) + 1;
+
+        const will_overflow_position = next_position >= modulo;
+
+        const cond0 = @intFromBool(will_overflow_position);
+        const cond1 = cond0 & @intFromBool(selector_digit == 3);
+        const cond2 = cond0 & @intFromBool(this.next_position_start <= this.digit_count);
+        const cond3 = cond0 & @intFromBool(selector_digit == (position_without_offset & 1) + 1);
+        const cond4 = cond0 & @intFromBool(position_without_offset >= EncodedChunk.digits_per_chunk);
+        const cond5 = ((cond1) & (cond2)) | ((cond3) & (~cond4));
+        const cond6 = cond1 & cond2;
+        const cond7 = cond3 & cond4;
+
+        next.next_position_start = if (cond1 == 1) 0 else this.next_position_start *| 3 +| selector_digit;
+
+        next.position_start = if (cond6 == 1) this.digit_count - this.next_position_start else this.position_start;
+
+        next.position = next_position;
+        next.position = if (cond5 == 1) 0 else next.position;
+        next.position = if (cond7 == 1) this.position - EncodedChunk.digits_per_chunk else next.position;
+        next.position %= modulo;
+    }
+
     fn iterateNoColorMutate(this: *SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray) void {
-        const next: SelfConsumingReaderState = undefined;
+        var next: SelfConsumingReaderState = this.*;
         this.iterateNoColor(selector_digit, digits, &next);
         this.* = next;
     }
@@ -486,7 +571,6 @@ pub const SelfConsumingReaderState = struct {
 
     pub fn iterateMutate(noalias this: *SelfConsumingReaderState, selector_digit: u2, digits: VirtualDigitArray) void {
         this.color = this.getChildColors(digits)[selector_digit];
-
         this.iterateNoColorMutate(selector_digit, digits);
     }
 
@@ -501,21 +585,9 @@ pub const SelfConsumingReaderState = struct {
     }
 
     pub fn getChildColors(this: *const SelfConsumingReaderState, digits: VirtualDigitArray) [4][3]u8 {
-        if (this.digit_count == 0) {
-            const default: [4][3]u8 = @splat(this.color);
-            return default;
-        }
+        std.debug.assert(this.valid());
 
-        var digit_idx: Size = undefined;
-        if (this.position_layer == null_layer) {
-            const modulo = this.digit_count - this.position_start;
-            digit_idx = this.position_start + clampWrap(this.position + 1, modulo);
-        } else {
-            const offset = offsetFromLayer(this.position_layer);
-            digit_idx = this.position + offset + this.position_start;
-        }
-
-        std.debug.assert(digit_idx < this.digit_count);
+        const digit_idx = this.absolutePosition();
 
         {
             const encoded_chunk = EncodedChunk.fromDigits(digits, digit_idx, this.position_start, this.digit_count);
@@ -1360,7 +1432,7 @@ fn readDigitsToBytes(
 
     const num_bytes_to_read = std.math.divCeil(usize, num_to_actually_read, 4) catch unreachable;
 
-    if (digit_array.array.length / 4 > (starting_idx / 4) + bytes.len + 1) {
+    if (num_to_actually_read > 0 and digit_array.array.length / 4 > (starting_idx / 4) + bytes.len + 1) {
         var res: std.meta.Int(.unsigned, (bytes.len + 1) * 8) = undefined;
         const starting_idx_offset = starting_idx % 4;
 
@@ -1570,6 +1642,12 @@ const EncodedChunk = struct {
         _ = position_start; // autofix
         var res: EncodedChunk = undefined;
 
+        // if (digit_count == 0) {
+        //     return .{
+        //         .splitters = @splat(0),
+        //     };
+        // }
+
         // var running_idx = idx;
         // res.splitters[0..9].* = getArrayFromDigits(digits, 3 * 3, u8, &running_idx, position_start, digit_count);
 
@@ -1673,119 +1751,179 @@ pub fn encodeColors(allocator: std.mem.Allocator, colors: []const Color) !DigitA
     }
 
     // TODO calculate actual minimum for this value
-    const padding_count = 100;
+    const padding_count = 20;
 
     // TODO calculate actual minimum for this value
-    const base_3_max_digits = 20;
+    const base_3_max_digits = 30;
+    _ = base_3_max_digits; // autofix
 
-    // TODO calculate actual minimum for this value
-    const starting_zero_splitters = 5;
+    // // TODO calculate actual minimum for this value
+    // const starting_zero_splitters = 5;
 
-    const linear_position_distance =
-        base_3_max_digits - 2 +
-        digits.length +
-        padding_count +
-        (EncodedChunk.digits_per_chunk + 1) * (starting_zero_splitters + base_3_max_digits);
+    const zero_splitters_layer = chunks.len;
 
-    var digits_for_overflow: usize = 0;
-    {
-        var tester_state: SelfConsumingReaderState = .{
-            .position_start = 0,
-            .position_layer = 0,
-            .position = 0,
-            .digit_count = @intCast(linear_position_distance + 1),
-            // .linear = false,
-            .next_position_start = 0,
-            .color = @splat(0),
-        };
+    const absolute_final_position = 0;
 
-        const tester_digits = try DigitArray.init(allocator, linear_position_distance + 1000);
-        defer tester_digits.deinit(allocator);
-
-        @memset(tester_digits.digit_backers, 0);
-
-        while (tester_state.position_layer != SelfConsumingReaderState.null_layer) {
-            var next: SelfConsumingReaderState = undefined;
-            tester_state.iterate(0, VirtualDigitArray.fromDigitArray(tester_digits, 0, 0, 0), &next);
-            tester_state = next;
-            digits_for_overflow += 1;
-        }
-    }
-
-    const position_distance =
-        base_3_max_digits - 2 +
-        digits.length +
-        padding_count +
-        base_3_max_digits +
-        digits_for_overflow +
-        starting_zero_splitters;
-
-    var color_find_digits = std.ArrayList(u2).init(allocator);
-    defer color_find_digits.deinit();
-
-    var color_find_list_writer: ArrayListDigitWriter = .{ .list = &color_find_digits };
-    const color_find_writer = color_find_list_writer.writer();
-
-    for (0..starting_zero_splitters) |_| {
-        try color_find_digits.append(0);
-
-        for (0..EncodedChunk.digits_per_chunk) |i| {
-            const splitter_digit_idx = i / 4;
-            const splitter_digit_offset = i % 4;
-
-            const digit = (zero_splitters[splitter_digit_idx] >> @intCast(splitter_digit_offset * 2)) & 0b11;
-
-            try color_find_digits.append(@intCast(digit));
-        }
-    }
-
-    var seek_and_set_position_digits = std.ArrayList(u2).init(allocator);
-    defer seek_and_set_position_digits.deinit();
-
-    var seek_and_set_position_list_writer: ArrayListDigitWriter = .{ .list = &seek_and_set_position_digits };
-    const seek_and_set_position_writer = seek_and_set_position_list_writer.writer();
-
-    try seek_and_set_position_writer.encodePadded(position_distance, base_3_max_digits);
-
-    {
-        try encodeColorSearch(
-            color_find_writer,
-            seek_and_set_position_digits.items,
-            .{
-                .r = 128,
-                .g = 128,
-                .b = 128,
-                .a = 255,
-            },
-            chunks[0][0],
-        );
-    }
+    var digit_list = std.ArrayList(u2).init(allocator);
+    defer digit_list.deinit();
 
     for (0..digits.length) |i| {
-        try color_find_digits.append(digits.get(i));
+        try digit_list.append(digits.get(i));
+    }
+
+    const average_color = colorToArr(chunks[0][0]);
+
+    const zero_splitter_offset = SelfConsumingReaderState.offsetFromLayer(@intCast(zero_splitters_layer - 1));
+
+    const absolute_zero_splitter_position = digit_list.items.len - absolute_final_position - zero_splitter_offset;
+
+    // const safe_digit_count = (@as(usize, 1) << @intCast((zero_splitters_layer - 1) * 2)) * 39;
+
+    // std.debug.assert(zero_splitter_count * 39 <= safe_digit_count);
+
+    // jsPrint("xx: {}", .{safe_digit_count / 39});
+    // jsPrint("yy: {}", .{digit_list.items.len});
+    // jsPrint("zz: {}", .{absolute_zero_splitter_position});
+
+    var final_position_digits = std.ArrayList(u2).init(allocator);
+    defer final_position_digits.deinit();
+
+    const magic_splitters = @embedFile("magic_splitters");
+
+    const zero_splitter_count = magic_splitters.len / 10;
+
+    const neutral_count = 1 - (zero_splitter_count % 2);
+
+    {
+        var test_digit: u2 = 2;
+        for (0..zero_splitter_count) |_| {
+            test_digit ^= 0b11;
+        }
+
+        for (0..1 + neutral_count) |_| {
+            try final_position_digits.append(test_digit);
+            test_digit ^= 0b11;
+        }
+    }
+
+    var final_search_digits = std.ArrayList(u2).init(allocator);
+    defer final_search_digits.deinit();
+
+    const final_position_digit_writer = @as(ArrayListDigitWriter, .{ .list = &final_search_digits }).writer();
+
+    try encodeColorSearch(
+        final_position_digit_writer,
+        final_position_digits.items,
+
+        arrToColor(.{ 128, 128, 128 }),
+
+        arrToColor(average_color),
+    );
+
+    for (0..final_search_digits.items.len / EncodedChunk.digits_per_chunk) |i| {
+        const inverse_idx = final_search_digits.items.len / EncodedChunk.digits_per_chunk - 1 - i;
+
+        try digit_list.appendSlice(final_search_digits.items[inverse_idx * EncodedChunk.digits_per_chunk ..][0..EncodedChunk.digits_per_chunk]);
+    }
+
+    for (0..zero_splitter_count) |j| {
+        for (0..EncodedChunk.digits_per_chunk) |i| {
+            try digit_list.append(@truncate(magic_splitters[(zero_splitter_count - j - 1) * 10 ..][i / 4] >> @intCast((i % 4) * 2)));
+        }
     }
 
     for (0..padding_count) |_| {
-        try color_find_digits.append(3);
+        try digit_list.append(3);
     }
 
-    try color_find_writer.encodePadded(linear_position_distance, base_3_max_digits);
+    var running_state: SelfConsumingReaderState = .{
+        .position = 0,
+        .position_start = @intCast(digit_list.items.len - 1),
+        .next_position_start = 0,
+        .digit_count = @intCast(digit_list.items.len),
 
-    for (0..digits_for_overflow) |_| {
-        try color_find_digits.append(0);
+        .color = undefined,
+    };
+
+    var zero_splitter_position_digits = std.ArrayList(u2).init(allocator);
+    defer zero_splitter_position_digits.deinit();
+
+    while (true) {
+        const num_to_encode_zero_splitter_position = zero_splitter_position_digits.items.len + 1;
+
+        const relative_zero_splitter_position = running_state.digit_count + num_to_encode_zero_splitter_position - absolute_zero_splitter_position - 1;
+
+        {
+            var min_len: usize = 0;
+            var current = relative_zero_splitter_position;
+            while (current > 0) {
+                current /= 3;
+                min_len += 1;
+            }
+
+            if (min_len > zero_splitter_position_digits.items.len) {
+                try zero_splitter_position_digits.resize(min_len);
+
+                continue;
+            }
+        }
+
+        encodeBase3(relative_zero_splitter_position, zero_splitter_position_digits.items);
+
+        var tester_state = running_state;
+
+        for (zero_splitter_position_digits.items) |digit| {
+            tester_state.iterateNoColorMutate(digit, undefined);
+        }
+
+        tester_state.iterateNoColorMutate(3, undefined);
+
+        if (tester_state.absolutePosition() == absolute_zero_splitter_position) {
+            for (zero_splitter_position_digits.items) |digit| {
+                try digit_list.append(digit);
+            }
+
+            try digit_list.append(3);
+
+            running_state = tester_state;
+
+            break;
+        }
+
+        _ = try zero_splitter_position_digits.addOne();
     }
 
-    try color_find_digits.appendNTimes(0, starting_zero_splitters);
+    const ending_splitter_length = (zero_splitter_count + final_position_digits.items.len) - 1;
 
-    try color_find_digits.appendSlice(seek_and_set_position_digits.items[0..seek_and_set_position_digits.items.len]);
+    const ending_splitter_length_digits = try allocator.alloc(u2, zero_splitters_layer - 1);
+    encodeBase4(ending_splitter_length, ending_splitter_length_digits);
+
+    for (ending_splitter_length_digits) |digit| {
+        running_state.iterateNoColorMutate(digit, undefined);
+        try digit_list.append(digit);
+    }
+
+    var current_digit: u2 = 2;
+
+    for (0..zero_splitter_count) |_| {
+        running_state.iterateNoColorMutate(current_digit, undefined);
+        try digit_list.append(current_digit);
+
+        current_digit ^= 0b11;
+    }
+
+    for (final_position_digits.items) |digit| {
+        running_state.iterateNoColorMutate(digit, undefined);
+        try digit_list.append(digit);
+    }
 
     const digits_with_command = try DigitArray.init(
         allocator,
-        color_find_digits.items.len,
+        digit_list.items.len,
     );
     var digits_with_command_idx: usize = 0;
 
-    for (color_find_digits.items) |command_digit| {
+    for (digit_list.items) |command_digit| {
         digits_with_command.set(digits_with_command_idx, command_digit);
         digits_with_command_idx += 1;
     }
@@ -1795,6 +1933,26 @@ pub fn encodeColors(allocator: std.mem.Allocator, colors: []const Color) !DigitA
     digits.deinit(allocator);
 
     return digits_with_command;
+}
+
+fn encodeBase3(to_encode: usize, digits: []u2) void {
+    var current = to_encode;
+    var i: usize = digits.len;
+    while (i > 0) {
+        i -= 1;
+        digits[i] = @intCast(current % 3);
+        current /= 3;
+    }
+}
+
+fn encodeBase4(to_encode: usize, digits: []u2) void {
+    var current = to_encode;
+    var i: usize = digits.len;
+    while (i > 0) {
+        i -= 1;
+        digits[i] = @intCast(current % 4);
+        current /= 4;
+    }
 }
 
 fn makeVirtualIdx(x: usize, y: usize, bit_count: usize) usize {
@@ -2039,23 +2197,15 @@ pub fn encodeColorSearch(writer: DigitWriter, digit_path: []const u2, current_co
     };
     const encoded_chunk_digits = encoded_chunk.toDigits();
 
-    try writer.write(target_color_digit);
     for (&encoded_chunk_digits) |digit| {
         try writer.write(digit);
     }
+    // try writer.write(target_color_digit);
 
     // jsPrint("pd: {any} {any} {}", .{ target_colors_arr, target_color, target_color_digit });
 
     try encodeColorSearch(writer, digit_path[1..], target_colors[target_color_digit], target_color_arg);
 }
-
-const zero_splitters = blk: {
-    var zero_splitters_init: [10]u8 = @splat(0);
-    zero_splitters_init[0..9].* = @splat(128);
-    zero_splitters_init[9] = 0b111111;
-
-    break :blk zero_splitters_init;
-};
 
 fn hash32(x: u32) u32 {
     return x *% 1664525;
@@ -2090,13 +2240,8 @@ fn hash72Inverse(x: u72) u72 {
 }
 
 fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
-    if (isZeroSplitter(splitters)) {
-        return splitters;
-    }
-
     var res: [10]u8 = undefined;
     var res_int = std.mem.readInt(u72, splitters[0..9], .little);
-    res_int = res_int;
 
     res_int ^= std.mem.readInt(u24, &color, .little);
 
@@ -2108,14 +2253,9 @@ fn splitterApplyColorSalt(splitters: [10]u8, color: [3]u8) [10]u8 {
     return res;
 }
 
-fn splitterApplyColorSaltInverse(splitters: [10]u8, color: [3]u8) [10]u8 {
-    if (isZeroSplitter(splitters)) {
-        return splitters;
-    }
-
+pub fn splitterApplyColorSaltInverse(splitters: [10]u8, color: [3]u8) [10]u8 {
     var res: [10]u8 = undefined;
     var res_int = std.mem.readInt(u72, splitters[0..9], .little);
-    res_int = res_int;
 
     res_int = hash72Inverse(res_int);
 
@@ -2127,12 +2267,45 @@ fn splitterApplyColorSaltInverse(splitters: [10]u8, color: [3]u8) [10]u8 {
     return res;
 }
 
-fn isZeroSplitter(splitters: [10]u8) bool {
-    return splittersEqual(splitters, zero_splitters);
-}
-
 fn splittersEqual(a: [10]u8, b: [10]u8) bool {
     return @as(u80, @bitCast(a)) == @as(u80, @bitCast(b));
+}
+
+pub fn inAltPath(color: [3]u8, splitters_arg: [10]u8) bool {
+    var splitters = splitters_arg;
+
+    // splitters = splitterApplyColorSalt(splitters, color);
+
+    splitters = splitters;
+
+    const color_modifiers_flat = splitters[3 * 3];
+
+    var total_color_bits_ored: u16 = 0;
+
+    var res_colors: [4][3]u8 = undefined;
+
+    for (0..3) |i| {
+        const color_modifier: u2 = @truncate(color_modifiers_flat >> @intCast(i * 2));
+
+        var total_color_component: i16 = color[i];
+        total_color_component *= 4;
+        total_color_component += color_modifier;
+        total_color_component -= 1;
+
+        for (0..3) |j| {
+            total_color_component -= splitters[j * 3 + i];
+        }
+
+        const total_color_component_bits: u16 = @bitCast(total_color_component);
+
+        total_color_bits_ored |= total_color_component_bits;
+
+        res_colors[3][i] = @truncate(total_color_component_bits);
+
+        res_colors[i] = splitters[i * 3 ..][0..3].*;
+    }
+
+    return total_color_bits_ored >> 8 != 0;
 }
 
 pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
@@ -2168,10 +2341,6 @@ pub fn splitColor(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     }
 
     if (total_color_bits_ored >> 8 != 0) {
-        if (isZeroSplitter(splitters)) {
-            @branchHint(.unlikely);
-            return splitColorZeroPath(color, splitters);
-        }
         return splitColorAltPath(color, splitters);
     }
 
@@ -2208,9 +2377,6 @@ fn splitColorSimd(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
     total_color_bits >>= @splat(8);
 
     if (@reduce(.Or, total_color_bits) != 0) {
-        if (isZeroSplitter(splitters)) {
-            return splitColorZeroPath(color, splitters);
-        }
         return splitColorAltPath(color, splitters);
     }
 
@@ -2263,86 +2429,10 @@ fn splitColorSimplified(color: [3]u8, splitters_arg: [10]u8) [4][3]u8 {
         }
 
         if (total_color_component < 0 or total_color_component > 255) {
-            if (isZeroSplitter(splitters)) {
-                return splitColorZeroPath(color, splitters);
-            }
             return splitColorAltPath(color, splitters);
         }
 
         res_colors[3][i] = @intCast(total_color_component);
-    }
-
-    assertValidSplit(color, res_colors);
-
-    return res_colors;
-}
-
-fn splitColorZeroPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
-    var res_colors: [4][3]u8 = undefined;
-
-    for (&color, 0..3) |color_component, i| {
-        var total_color_component = @as(u16, color_component) * 4;
-
-        if (total_color_component < 128) {
-            total_color_component = @min(128, total_color_component + 2);
-        }
-
-        if (total_color_component > 128) {
-            total_color_component -= 1;
-        }
-
-        if (total_color_component <= 255 * 3 + 128) {
-            res_colors[0][i] = @intCast(@min(total_color_component, 128));
-        } else {
-            res_colors[0][i] = @intCast(total_color_component - 255 * 3);
-        }
-
-        total_color_component -= res_colors[0][i];
-
-        const altered_color_component: u8 = @intCast(total_color_component / 3);
-        var target: i16 = @intCast(total_color_component % 3);
-
-        if (true) {
-            for (0..3) |j| {
-                res_colors[j + 1][i] = altered_color_component;
-                if (j < target) {
-                    res_colors[j + 1][i] += 1;
-                }
-            }
-
-            continue;
-        }
-
-        if (altered_color_component >= 128) {
-            target = -target;
-        }
-
-        const splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
-
-        const base = if (altered_color_component < 128) @as(u16, altered_color_component) + 1 else 256 - @as(u16, altered_color_component);
-
-        var diffs: [3]u8 = undefined;
-        for (&diffs, 0..) |*diff, j| {
-            const splitter_code_component: u8 = @truncate(splitter_code >> @intCast(j * 8));
-            diff.* = @intCast((@as(u16, splitter_code_component) * @as(u16, base)) >> 8);
-            target += diff.*;
-        }
-
-        const min_diff: u8 = @bitCast(@as(i8, @intCast(@divFloor(target, 3))));
-        const excess_diff = @mod(target, 3);
-
-        const extra_code = splitter_code;
-
-        var excess_idx: usize = extra_code % 3;
-
-        const mul: u8 = if (altered_color_component < 128) 1 else 255;
-        for (0..3) |j| {
-            const excess_inner: u8 = @intFromBool(excess_idx < excess_diff);
-
-            excess_idx = (excess_idx + 1) % 3;
-
-            res_colors[j + 1][i] = altered_color_component -% (diffs[j] *% mul) +% (min_diff *% mul) +% (excess_inner *% mul);
-        }
     }
 
     assertValidSplit(color, res_colors);
@@ -2355,43 +2445,48 @@ fn splitColorAltPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
         return splitColorAltPathSimd(color, splitters);
     }
 
+    const all_components_code: u32 = std.mem.readInt(u24, splitters[0..3], .little);
+
     var res_colors: [4][3]u8 = undefined;
 
     for (0..3) |i| {
         const color_component = color[i];
 
-        const splitter_code: u32 = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
+        const component_code: u32 = std.mem.readInt(u16, splitters[3 + i * 2 ..][0..2], .little);
 
-        // min for color_component less than: 110
-        // max for color_component less than: 146
-        const base = if (color_component < 128) @as(u16, color_component) + 1 else 256 - @as(u16, color_component);
+        const base = @as(u16, color_component) + 1;
+
+        const base_min: u16 = @max(@as(i16, color_component) * 2 - 255, 0);
 
         var target: u16 = 0;
         var diffs: [4]u8 = undefined;
 
         for (&diffs, 0..) |*diff, j| {
-            const splitter_code_component: u6 = @truncate(splitter_code >> @intCast(j * 6));
-            diff.* = @intCast((@as(u16, splitter_code_component) * @as(u16, base)) >> 6);
+            const splitter_code_component: u7 =
+                @intCast(((all_components_code >> @intCast(j * 6)) & 0b111111) +
+                (((component_code >> @intCast(j * 4)) & 0b1111) << 2));
+
+            diff.* = @intCast(base_min + ((@as(u16, splitter_code_component) * @as(u16, base - base_min)) >> 7));
             target += diff.*;
         }
 
-        const extra_code = splitter_code;
-
-        // Adds 1 to total if color_component < 128, subtracts 1 otherwise.
-        target += 1;
+        if (color_component < 128) {
+            target += 1;
+        } else {
+            target -= 1;
+        }
 
         const min_diff: u8 = @intCast(target / 4);
         const excess_diff = target % 4;
 
-        var excess_idx: usize = extra_code % 4;
+        var excess_idx: usize = (splitters[9] >> @intCast(i * 2)) % 4;
 
-        const mul: u8 = if (color_component < 128) 1 else 255;
         for (0..4) |j| {
             const excess: u8 = @intFromBool(excess_idx < excess_diff);
 
             excess_idx = (excess_idx + 1) % 4;
 
-            res_colors[j][i] = color_component -% (diffs[j] *% mul) +% (min_diff *% mul) +% (excess *% mul);
+            res_colors[j][i] = color_component - diffs[j] + min_diff + excess;
         }
     }
 
@@ -2401,59 +2496,83 @@ fn splitColorAltPath(color: [3]u8, splitters: [10]u8) [4][3]u8 {
 }
 
 fn splitColorAltPathSimd(color: [3]u8, splitters: [10]u8) [4][3]u8 {
-    const color_component_vec: @Vector(3, u8) = color;
+    var res_colors: [4][3]u8 = undefined;
 
-    var splitter_code_vec: @Vector(3, u32) = undefined;
-    for (0..3) |i| {
-        splitter_code_vec[i] = std.mem.readInt(u24, splitters[i * 3 ..][0..3], .little);
-    }
+    const color_component_vec: @Vector(3, u32) = color;
 
-    var base_vec1: @Vector(3, i16) = color_component_vec;
-    base_vec1 += @splat(1);
+    var base_min_vec = color_component_vec;
+    base_min_vec *= @splat(2);
+    base_min_vec -|= @splat(255);
 
-    var base_vec2: @Vector(3, i16) = @splat(256);
-    base_vec2 -= color_component_vec;
+    const all_components_code: u32 = std.mem.readInt(u24, splitters[0..3], .little);
 
-    const base_vec_pred = color_component_vec < @as(@Vector(3, u8), @splat(128));
+    var target_vec_signed =
+        @select(
+        i32,
+        color_component_vec < @as(@Vector(3, u8), @splat(128)),
+        @as(@Vector(3, i32), @splat(1)),
+        @as(@Vector(3, i32), @splat(-1)),
+    );
 
-    const base_vec: @Vector(3, u16) = @intCast(@select(i16, base_vec_pred, base_vec1, base_vec2));
+    //var target_vec_signed:@Vector(3, i32) = @intFromBool(color_component_vec < @as(@Vector(3, u8), @splat(128)));
+    //target_vec_signed *= @splat(2);
+    //target_vec_signed -= @splat(1);
 
-    // Adds 1 to total if color_component < 128, subtracts 1 otherwise.
-    var target_vec: @Vector(3, u16) = @splat(1);
+    var diffs: [4]@Vector(3, u8) = undefined;
 
-    var diffs_vec: [4]@Vector(3, u8) = undefined;
+    const component_code_vec: @Vector(3, u32) = if (@import("builtin").cpu.arch.endian() == .little)
+        @as(@Vector(3, u16), @bitCast(splitters[3..][0..6].*))
+    else
+        @byteSwap(@as(@Vector(3, u16), @bitCast(splitters[3..][0..6].*)));
 
     for (0..4) |i| {
-        var splitter_code_component_vec = splitter_code_vec;
-        splitter_code_component_vec >>= @splat(@intCast(i * 6));
-        splitter_code_component_vec &= @splat((1 << 6) - 1);
+        var splitter_code_component_vec = component_code_vec;
 
-        var diff: @Vector(3, u16) = @intCast(splitter_code_component_vec);
-        diff *= base_vec;
-        diff >>= @splat(6);
+        splitter_code_component_vec >>= @splat(@intCast(i * 4));
+        splitter_code_component_vec &= @splat(0b1111);
+        splitter_code_component_vec <<= @splat(2);
 
-        diffs_vec[i] = @intCast(diff);
-        target_vec += diff;
+        splitter_code_component_vec += @splat((all_components_code >> @intCast(i * 6)) & 0b111111);
+
+        var diff: @Vector(3, u32) = @intCast(splitter_code_component_vec);
+
+        var diff_mul: @Vector(3, u32) = color_component_vec;
+        diff_mul += @splat(1);
+        diff_mul -= base_min_vec;
+
+        diff *= diff_mul;
+        diff >>= @splat(7);
+        diff += base_min_vec;
+
+        diffs[i] = @intCast(diff);
+
+        target_vec_signed += @intCast(diff);
     }
 
-    const min_diff_vec: @Vector(3, u8) = @intCast(target_vec / @as(@Vector(3, u16), @splat(4)));
+    const target_vec: @Vector(3, u32) = @intCast(target_vec_signed);
+
+    var min_diff_vec = target_vec;
+    min_diff_vec /= @splat(4);
+
     var excess_diff_vec = target_vec;
     excess_diff_vec %= @splat(4);
 
-    const extra_code_vec = splitter_code_vec;
-    var excess_idx_vec = extra_code_vec;
-    excess_idx_vec %= @splat(4);
+    var excess_idx_vec: @Vector(3, u32) = @splat(splitters[9]);
+    excess_idx_vec >>= .{ 0, 2, 4 };
 
-    var res_colors: [4][3]u8 = undefined;
-    for (0..4) |j| {
-        const excess_vec: @Vector(3, u8) = @intFromBool(excess_idx_vec < excess_diff_vec);
-
-        excess_idx_vec += @splat(1);
+    for (0..4) |i| {
         excess_idx_vec %= @splat(4);
+        const excess_vec = @intFromBool(excess_idx_vec < excess_diff_vec);
+        excess_idx_vec += @splat(1);
 
-        const res1 = min_diff_vec -% diffs_vec[j] +% excess_vec;
-        const res2 = @as(@Vector(3, u8), @splat(0)) -% res1;
-        res_colors[j] = color_component_vec +% @select(u8, base_vec_pred, res1, res2);
+        const diff = diffs[i];
+
+        var res_color = color_component_vec;
+        res_color -= diff;
+        res_color += min_diff_vec;
+        res_color += excess_vec;
+
+        res_colors[i] = @as(@Vector(3, u8), @intCast(res_color));
     }
 
     assertValidSplit(color, res_colors);

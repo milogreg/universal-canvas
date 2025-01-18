@@ -103,4 +103,22 @@ pub fn build(b: *std.Build) void {
 
     const benchmark_step = b.step("benchmark", "benchmark performance");
     benchmark_step.dependOn(&benchmark_run_cmd.step);
+
+    // --------------------------------------------------------
+
+    const bruteforce_exe = b.addExecutable(.{
+        .name = "example",
+        .root_source_file = b.path("src/bruteforce.zig"),
+        .optimize = optimize,
+        .target = target,
+    });
+
+    const bruteforce_run_cmd = b.addRunArtifact(bruteforce_exe);
+
+    if (b.args) |args| {
+        bruteforce_run_cmd.addArgs(args);
+    }
+
+    const bruteforce_step = b.step("bruteforce", "perform brute force calculations");
+    bruteforce_step.dependOn(&bruteforce_run_cmd.step);
 }

@@ -83,6 +83,8 @@ pub const Panic = struct {
 
 const allocator: std.mem.Allocator = std.heap.wasm_allocator;
 
+// const allocator: std.mem.Allocator = std.heap.page_allocator;
+
 fn jsPrint(comptime fmt: []const u8, args: anytype) void {
     const to_print = std.fmt.allocPrint(allocator, fmt, args) catch @panic("OOM");
     defer allocator.free(to_print);
@@ -574,18 +576,36 @@ export fn resizeViewport(canvas_width: usize, canvas_height: usize) void {
     backup_client.updateDimensions(canvas_width, canvas_height);
 }
 
-// fn printDigits() void {
-//     var list = std.ArrayList(u2).init(allocator);
-//     defer list.deinit();
+fn printDigits() void {
+    const num_to_print = 10;
 
-//     for (0..quadrant_offset_digits[0].array.length) |i| {
-//         const digit = quadrant_offset_digits[0].array.get(i);
+    for (0..4) |quadrant| {
+        const digits = state_tree.quadrant_digits[quadrant];
 
-//         list.append(digit) catch @panic("OOM");
-//     }
+        var list1 = std.ArrayList(u2).init(allocator);
+        defer list1.deinit();
 
-//     jsPrint("digits: {any}", .{list.items});
-// }
+        for (0..@min(num_to_print, digits.length)) |i| {
+            const digit = digits.get(i);
+
+            list1.append(digit) catch @panic("OOM");
+        }
+
+        var list2 = std.ArrayList(u2).init(allocator);
+        defer list2.deinit();
+
+        for (digits.length -| num_to_print..digits.length) |i| {
+            const digit = digits.get(i);
+
+            list2.append(digit) catch @panic("OOM");
+        }
+
+        jsPrint("digits {}: {any} ... {any}", .{ quadrant, list1.items, list2.items });
+    }
+}
+
+// { 0, 0, 1, 3, 3, 0, 2, 0, 2, 3 } ... { 2, 1, 0, 2, 1, 0, 2, 1, 0, 0 }
+// { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 } ... { 2, 1, 0, 2, 1, 0, 2, 1, 0, 0 }
 
 const WorkCycleState = struct {
     update_position: UpdatePosition,
@@ -847,6 +867,8 @@ const WorkCycleState = struct {
             const sub_square_size = parent_square_size / 2;
 
             if (!this.setup_initial_states) {
+                // printDigits();
+
                 for (0..4) |i| {
                     if (offset_initial_states[i] == null) {
                         const start_time = js.getTime();
@@ -859,7 +881,7 @@ const WorkCycleState = struct {
                         //     state_tree.quadrant_digits[i].length,
                         // );
 
-                        // if (initial_state.color != tester.color) {
+                        // if (@reduce(.Or, initial_state.color != tester.color)) {
                         //     jsPrint("MISMATCH: {} {}", .{ initial_state.color, tester.color });
                         //     @panic("");
                         // }
@@ -874,6 +896,14 @@ const WorkCycleState = struct {
                     }
 
                     const initial_state = offset_initial_states[i].?;
+
+                    // var initial_state: render.SelfConsumingReaderState = .init(0, root_color);
+                    // for (0..state_tree.quadrant_digits[i].length) |j| {
+                    //     initial_state.iterateMutate(state_tree.quadrant_digits[i].get(j), render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0));
+                    // }
+
+                    jsPrint("{}", .{initial_state});
+                    jsPrint("pos: {}", .{initial_state.absolutePosition()});
 
                     const color_chunks = this.output_color_chunks[i];
 

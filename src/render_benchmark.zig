@@ -12,6 +12,9 @@ pub fn main() !void {
     const deep_zoom_time = try benchmarkDeepZoom(allocator);
     std.debug.print("deep zoom time: {d} ms\n", .{@as(f128, @floatFromInt(deep_zoom_time)) / 1000000.0});
 
+    // const state_stems_deep_zoom_time = try benchmarkStateStemsDeepZoom(allocator);
+    // std.debug.print("state stems deep zoom time: {d} ms\n", .{@as(f128, @floatFromInt(state_stems_deep_zoom_time)) / 1000000.0});
+
     const fill_iteration_time = try benchmarkFillIteration(allocator);
     std.debug.print("fill iteration time: {d} ms\n", .{@as(f128, @floatFromInt(fill_iteration_time)) / 1000000.0});
 
@@ -43,6 +46,68 @@ fn benchmarkEncodeColors(allocator: std.mem.Allocator) !u64 {
 
     const digits = try render.encodeColors(allocator, colors);
     defer digits.deinit(allocator);
+
+    return timer.read();
+}
+
+fn benchmarkStateStemsDeepZoom(allocator: std.mem.Allocator) !u64 {
+    const square_size = 1024;
+
+    const colors = try allocator.alloc(render.Color, square_size * square_size);
+    defer allocator.free(colors);
+
+    var prng = std.Random.DefaultPrng.init(123);
+    const random = prng.random();
+
+    for (colors) |*color| {
+        color.* = @bitCast(random.int(u32));
+        color.a = 255;
+    }
+
+    const digits = try render.encodeColors(allocator, colors);
+    defer digits.deinit(allocator);
+
+    const root_color: render.Color = .{
+        .r = 60,
+        .g = 60,
+        .b = 60,
+        .a = 255,
+    };
+
+    var state_tree = try render.StateStems.init(allocator, root_color);
+
+    // for (0..digits.length) |_| {
+    //     for (0..4) |j| {
+    //         try state_tree.appendDigit(j, 0);
+    //     }
+    // }
+
+    // for (0..4) |i| {
+    //     try state_tree.appendDigit(i, @intCast(i));
+    // }
+
+    // for (0..4) |i| {
+    //     std.mem.doNotOptimizeAway(try state_tree.stateAt(i, digits.length - 1));
+    // }
+
+    // state_tree.clearDigits();
+
+    for (0..digits.length) |i| {
+        const digit = digits.get(i);
+        for (0..4) |j| {
+            try state_tree.appendDigit(j, digit);
+        }
+    }
+
+    for (0..4) |i| {
+        try state_tree.appendDigit(i, @intCast(i));
+    }
+
+    var timer = try std.time.Timer.start();
+
+    for (0..4) |i| {
+        std.mem.doNotOptimizeAway(try state_tree.stateAt(i, digits.length - 1));
+    }
 
     return timer.read();
 }
@@ -287,20 +352,11 @@ fn benchmarkSplitColor(allocator: std.mem.Allocator) !u64 {
 
     var timer = try std.time.Timer.start();
 
-    var accum: u32 = 0;
-
     for (colors, splitters, split_colors) |color, splitter, *split_color| {
         _ = split_color; // autofix
 
-        // split_color.* = render.splitColor(color, splitter);
-
-        const split = render.splitColor(color, splitter);
-        for (0..4) |i| {
-            accum ^= @as(u24, @bitCast(@as(@Vector(3, u8), split[i])));
-        }
+        std.mem.doNotOptimizeAway(render.splitColor(color, splitter));
     }
-
-    std.mem.doNotOptimizeAway(accum);
 
     return timer.read();
 }
