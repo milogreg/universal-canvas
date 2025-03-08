@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
 
     exe.stack_size = std.wasm.page_size * 2;
     exe.initial_memory = std.wasm.page_size * 4;
-    exe.max_memory = std.wasm.page_size * 1024 * 64;
+    exe.max_memory = std.wasm.page_size * (1 << 16);
 
     const bin_dir = std.Build.InstallDir.bin;
 

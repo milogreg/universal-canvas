@@ -29,57 +29,174 @@ const js = struct {
     ) void;
 };
 
-pub const Panic = struct {
-    pub fn call(
-        msg: []const u8,
-        error_return_trace: ?*const std.builtin.StackTrace,
-        first_trace_addr: ?usize,
-    ) noreturn {
-        @branchHint(.cold);
+fn panicFn(
+    msg: []const u8,
+    first_trace_addr: ?usize,
+) noreturn {
+    @branchHint(.cold);
 
-        _ = error_return_trace; // autofix
-        _ = first_trace_addr; // autofix
+    _ = first_trace_addr; // autofix
 
-        var panic_msg_buf: [1000]u8 = undefined;
+    var panic_msg_buf: [1000]u8 = undefined;
 
-        const panic_msg = std.fmt.bufPrint(&panic_msg_buf, "panic: {s}", .{msg}) catch msg;
+    const panic_msg = std.fmt.bufPrint(&panic_msg_buf, "panic: {s}", .{msg}) catch msg;
 
-        js.printString(panic_msg.ptr, panic_msg.len);
+    js.printString(panic_msg.ptr, panic_msg.len);
 
-        @trap();
-    }
+    @trap();
+}
 
-    pub fn sentinelMismatch(expected: anytype, found: @TypeOf(expected)) noreturn {
-        @branchHint(.cold);
-        std.debug.panicExtra(null, @returnAddress(), "sentinel mismatch: expected {any}, found {any}", .{
-            expected, found,
-        });
-    }
+pub const panic = std.debug.FullPanic(panicFn);
 
-    pub fn unwrapError(ert: ?*std.builtin.StackTrace, err: anyerror) noreturn {
-        @branchHint(.cold);
-        std.debug.panicExtra(ert, @returnAddress(), "attempt to unwrap error: {s}", .{@errorName(err)});
-    }
+// pub const Panic = struct {
+//     pub fn call(
+//         msg: []const u8,
+//         first_trace_addr: ?usize,
+//     ) noreturn {
+//         @branchHint(.cold);
 
-    pub fn outOfBounds(index: usize, len: usize) noreturn {
-        @branchHint(.cold);
-        std.debug.panicExtra(null, @returnAddress(), "index out of bounds: index {d}, len {d}", .{ index, len });
-    }
+//         _ = first_trace_addr; // autofix
 
-    pub fn startGreaterThanEnd(start: usize, end: usize) noreturn {
-        @branchHint(.cold);
-        std.debug.panicExtra(null, @returnAddress(), "start index {d} is larger than end index {d}", .{ start, end });
-    }
+//         var panic_msg_buf: [1000]u8 = undefined;
 
-    pub fn inactiveUnionField(active: anytype, accessed: @TypeOf(active)) noreturn {
-        @branchHint(.cold);
-        std.debug.panicExtra(null, @returnAddress(), "access of union field '{s}' while field '{s}' is active", .{
-            @tagName(accessed), @tagName(active),
-        });
-    }
+//         const panic_msg = std.fmt.bufPrint(&panic_msg_buf, "panic: {s}", .{msg}) catch msg;
 
-    pub const messages = std.debug.SimplePanic.messages;
-};
+//         js.printString(panic_msg.ptr, panic_msg.len);
+
+//         @trap();
+//     }
+
+//     std.builtin.panic
+
+//     pub fn sentinelMismatch(expected: anytype, found: @TypeOf(expected)) noreturn {
+//         @branchHint(.cold);
+//         std.debug.panicExtra(@returnAddress(), "sentinel mismatch: expected {any}, found {any}", .{
+//             expected, found,
+//         });
+//     }
+
+//     pub fn unwrapError(err: anyerror) noreturn {
+//         @branchHint(.cold);
+//         std.debug.panicExtra(@returnAddress(), "attempt to unwrap error: {s}", .{@errorName(err)});
+//     }
+
+//     pub fn outOfBounds(index: usize, len: usize) noreturn {
+//         @branchHint(.cold);
+//         std.debug.panicExtra(@returnAddress(), "index out of bounds: index {d}, len {d}", .{ index, len });
+//     }
+
+//     pub fn startGreaterThanEnd(start: usize, end: usize) noreturn {
+//         @branchHint(.cold);
+//         std.debug.panicExtra(@returnAddress(), "start index {d} is larger than end index {d}", .{ start, end });
+//     }
+
+//     pub fn inactiveUnionField(active: anytype, accessed: @TypeOf(active)) noreturn {
+//         @branchHint(.cold);
+//         std.debug.panicExtra(@returnAddress(), "access of union field '{s}' while field '{s}' is active", .{
+//             @tagName(accessed), @tagName(active),
+//         });
+//     }
+
+//     pub fn reachedUnreachable() noreturn {
+//         @branchHint(.cold);
+//         call("reached unreachable code", @returnAddress());
+//     }
+
+//     pub fn unwrapNull() noreturn {
+//         @branchHint(.cold);
+//         call("attempt to use null value", @returnAddress());
+//     }
+
+//     pub fn castToNull() noreturn {
+//         @branchHint(.cold);
+//         call("cast causes pointer to be null", @returnAddress());
+//     }
+
+//     pub fn incorrectAlignment() noreturn {
+//         @branchHint(.cold);
+//         call("incorrect alignment", @returnAddress());
+//     }
+
+//     pub fn invalidErrorCode() noreturn {
+//         @branchHint(.cold);
+//         call("invalid error code", @returnAddress());
+//     }
+
+//     pub fn castTruncatedData() noreturn {
+//         @branchHint(.cold);
+//         call("integer cast truncated bits", @returnAddress());
+//     }
+
+//     pub fn negativeToUnsigned() noreturn {
+//         @branchHint(.cold);
+//         call("attempt to cast negative value to unsigned integer", @returnAddress());
+//     }
+
+//     pub fn integerOverflow() noreturn {
+//         @branchHint(.cold);
+//         call("integer overflow", @returnAddress());
+//     }
+
+//     pub fn shlOverflow() noreturn {
+//         @branchHint(.cold);
+//         call("left shift overflowed bits", @returnAddress());
+//     }
+
+//     pub fn shrOverflow() noreturn {
+//         @branchHint(.cold);
+//         call("right shift overflowed bits", @returnAddress());
+//     }
+
+//     pub fn divideByZero() noreturn {
+//         @branchHint(.cold);
+//         call("division by zero", @returnAddress());
+//     }
+
+//     pub fn exactDivisionRemainder() noreturn {
+//         @branchHint(.cold);
+//         call("exact division produced remainder", @returnAddress());
+//     }
+
+//     pub fn integerPartOutOfBounds() noreturn {
+//         @branchHint(.cold);
+//         call("integer part of floating point value out of bounds", @returnAddress());
+//     }
+
+//     pub fn corruptSwitch() noreturn {
+//         @branchHint(.cold);
+//         call("switch on corrupt value", @returnAddress());
+//     }
+
+//     pub fn shiftRhsTooBig() noreturn {
+//         @branchHint(.cold);
+//         call("shift amount is greater than the type size", @returnAddress());
+//     }
+
+//     pub fn invalidEnumValue() noreturn {
+//         @branchHint(.cold);
+//         call("invalid enum value", @returnAddress());
+//     }
+
+//     pub fn forLenMismatch() noreturn {
+//         @branchHint(.cold);
+//         call("for loop over objects with non-equal lengths", @returnAddress());
+//     }
+
+//     pub fn memcpyLenMismatch() noreturn {
+//         @branchHint(.cold);
+//         call("@memcpy arguments have non-equal lengths", @returnAddress());
+//     }
+
+//     pub fn memcpyAlias() noreturn {
+//         @branchHint(.cold);
+//         call("@memcpy arguments alias", @returnAddress());
+//     }
+
+//     pub fn noreturnReturned() noreturn {
+//         @branchHint(.cold);
+//         call("'noreturn' function returned", @returnAddress());
+//     }
+// };
 
 const allocator: std.mem.Allocator = std.heap.wasm_allocator;
 
@@ -365,168 +482,39 @@ const ClientPosition = struct {
 };
 
 fn appendDigit(digit: u2) void {
-    var new_offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
-
-    for (&new_offset_initial_states, 0..) |*new_initial_state, i| {
-        if (i & 1 == 1) {
-            state_tree.decrementX(i);
-        }
-
-        if (i >> 1 == 1) {
-            state_tree.decrementY(i);
-        }
-
-        state_tree.appendDigit(i, digit) catch @panic("OOM");
-
-        if (i & 1 == 1) {
-            state_tree.incrementX(i);
-        }
-        if (i >> 1 == 1) {
-            state_tree.incrementY(i);
-        }
-
-        const last_digit = state_tree.quadrant_digits[i].get(state_tree.quadrant_digits[i].length - 1);
-
-        const parent_digit = i & digit;
-
-        if (offset_initial_states[parent_digit]) |initial_state| {
-            const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0);
-
-            new_initial_state.* = initial_state.iterate(last_digit, virtual_digit_array);
-        }
-    }
-
-    offset_initial_states = new_offset_initial_states;
+    state_tree.appendDigit(digit) catch @panic("OOM");
 }
 
 fn removeDigit() void {
-    for (0..4) |i| {
-        if (i & 1 == 1) {
-            state_tree.decrementX(i);
-        }
-
-        if (i >> 1 == 1) {
-            state_tree.decrementY(i);
-        }
-
-        state_tree.removeDigit(i);
-
-        if (i & 1 == 1) {
-            state_tree.incrementX(i);
-        }
-        if (i >> 1 == 1) {
-            state_tree.incrementY(i);
-        }
-    }
-
-    offset_initial_states = @splat(null);
+    state_tree.removeDigit();
 }
 
 fn digitIncrement(digit: u2) void {
-    for (0..4) |i| {
-        if (digit & 1 == 1) {
-            state_tree.incrementX(i);
-        }
-        if (digit >> 1 == 1) {
-            state_tree.incrementY(i);
-        }
+    if (digit & 1 == 1) {
+        state_tree.incrementX();
     }
-
-    offset_initial_states = @splat(null);
+    if (digit >> 1 == 1) {
+        state_tree.incrementY();
+    }
 }
 
 fn digitIncrementAndAppend(increment_digit: u2, append_digit: u2) void {
-    var new_offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
-
-    for (&new_offset_initial_states, 0..) |*new_initial_state, i| {
-        if (i & 1 == 1 and increment_digit & 1 == 0) {
-            state_tree.decrementX(i);
-        }
-
-        if (i & 1 == 0 and increment_digit & 1 == 1) {
-            state_tree.incrementX(i);
-        }
-
-        if (i >> 1 == 1 and increment_digit >> 1 == 0) {
-            state_tree.decrementY(i);
-        }
-
-        if (i >> 1 == 0 and increment_digit >> 1 == 1) {
-            state_tree.incrementY(i);
-        }
-
-        state_tree.appendDigit(i, append_digit) catch @panic("OOM");
-
-        if (i & 1 == 1) {
-            state_tree.incrementX(i);
-        }
-        if (i >> 1 == 1) {
-            state_tree.incrementY(i);
-        }
-
-        const last_digit = state_tree.quadrant_digits[i].get(state_tree.quadrant_digits[i].length - 1);
-
-        const parent_digit = @as(usize, increment_digit) + @as(usize, i & append_digit);
-
-        if (parent_digit < 4) {
-            if (offset_initial_states[parent_digit]) |initial_state| {
-                const virtual_digit_array = render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0);
-
-                var new_initial_state_non_opt: render.SelfConsumingReaderState = undefined;
-
-                initial_state.iterate(last_digit, virtual_digit_array, &new_initial_state_non_opt);
-
-                new_initial_state.* = new_initial_state_non_opt;
-            }
-        }
-    }
-
-    offset_initial_states = new_offset_initial_states;
+    digitIncrement(increment_digit);
+    appendDigit(append_digit);
 }
 
 fn removeDigitAndDecrement(decrement_digit: u2) void {
-    for (0..4) |i| {
-        if (i & 1 == 1) {
-            state_tree.decrementX(i);
-        }
-
-        if (i >> 1 == 1) {
-            state_tree.decrementY(i);
-        }
-
-        state_tree.removeDigit(i);
-
-        if (i & 1 == 1 and decrement_digit & 1 == 0) {
-            state_tree.incrementX(i);
-        }
-
-        if (i & 1 == 0 and decrement_digit & 1 == 1) {
-            state_tree.decrementX(i);
-        }
-
-        if (i >> 1 == 1 and decrement_digit >> 1 == 0) {
-            state_tree.incrementY(i);
-        }
-
-        if (i >> 1 == 0 and decrement_digit >> 1 == 1) {
-            state_tree.decrementY(i);
-        }
-    }
-
-    offset_initial_states = @splat(null);
+    removeDigit();
+    digitDecrement(decrement_digit);
 }
 
 fn digitDecrement(digit: u2) void {
-    for (0..4) |i| {
-        if (digit & 1 == 1) {
-            state_tree.decrementX(i);
-        }
-        if (digit >> 1 == 1) {
-            state_tree.decrementY(i);
-        }
+    if (digit & 1 == 1) {
+        state_tree.decrementX();
     }
-
-    offset_initial_states = @splat(null);
+    if (digit >> 1 == 1) {
+        state_tree.decrementY();
+    }
 }
 
 var wait_until_backup = true;
@@ -628,19 +616,21 @@ const WorkCycleState = struct {
             _ = this; // autofix
             _ = iteration_amount; // autofix
 
-            const at_min_edge_y = state_tree.quadrant_digits[0].isMinY();
-            const at_min_edge_x = state_tree.quadrant_digits[0].isMinX();
+            const at_min_edge_y = state_tree.digits.isMinY();
+            const at_min_edge_x = state_tree.digits.isMinX();
 
             backup_client.at_max_border_x = at_min_edge_x;
             backup_client.at_max_border_y = at_min_edge_y;
 
-            const at_edge_y = state_tree.quadrant_digits[3].isMaxY();
-            const at_edge_x = state_tree.quadrant_digits[3].isMaxX();
+            digitIncrement(3);
+            const at_edge_y = state_tree.digits.isMaxY();
+            const at_edge_x = state_tree.digits.isMaxX();
+            digitDecrement(3);
 
             backup_client.at_min_border_x = at_edge_x;
             backup_client.at_min_border_y = at_edge_y;
 
-            if (!backup_client.inBounds() and state_tree.quadrant_digits[0].length > 1) {
+            if (!backup_client.inBounds() and state_tree.digits.length > 1) {
                 const movement_unit = @as(f64, @floatFromInt(backup_client.canvas_width)) * 0.5 * backup_client.zoom;
 
                 var increment_digit: u2 = 0;
@@ -696,15 +686,15 @@ const WorkCycleState = struct {
                 if (increment_digit == 0 and decrement_digit == 0) {
                     var additional_decrement: u2 = 0;
 
-                    if (state_tree.quadrant_digits[0].isMaxXBelow(state_tree.quadrant_digits[0].length - 1)) {
+                    if (state_tree.digits.isMaxXBelow(state_tree.digits.length - 1)) {
                         additional_decrement |= 0b01;
                     }
 
-                    if (state_tree.quadrant_digits[0].isMaxYBelow(state_tree.quadrant_digits[0].length - 1)) {
+                    if (state_tree.digits.isMaxYBelow(state_tree.digits.length - 1)) {
                         additional_decrement |= 0b10;
                     }
 
-                    const last_digit = state_tree.quadrant_digits[0].get(state_tree.quadrant_digits[0].length - 1);
+                    const last_digit = state_tree.digits.get(state_tree.digits.length - 1);
 
                     backup_client.removeDigit(last_digit);
                     backup_client.digitDecrement(additional_decrement);
@@ -737,11 +727,13 @@ const WorkCycleState = struct {
                         digitIncrementAndAppend(@intCast(increment_digit), @intCast(append_digit));
 
                         {
-                            test_client.at_max_border_x = state_tree.quadrant_digits[0].isMinX();
-                            test_client.at_max_border_y = state_tree.quadrant_digits[0].isMinY();
+                            test_client.at_max_border_x = state_tree.digits.isMinX();
+                            test_client.at_max_border_y = state_tree.digits.isMinY();
 
-                            test_client.at_min_border_x = state_tree.quadrant_digits[3].isMaxX();
-                            test_client.at_min_border_y = state_tree.quadrant_digits[3].isMaxY();
+                            digitIncrement(3);
+                            test_client.at_min_border_x = state_tree.digits.isMaxX();
+                            test_client.at_min_border_y = state_tree.digits.isMaxY();
+                            digitDecrement(3);
                         }
 
                         if (test_client.inBounds()) {
@@ -869,11 +861,15 @@ const WorkCycleState = struct {
             if (!this.setup_initial_states) {
                 // printDigits();
 
+                offset_initial_states = @splat(null);
+
                 for (0..4) |i| {
                     if (offset_initial_states[i] == null) {
                         const start_time = js.getTime();
 
-                        const initial_state = state_tree.stateAt(i, state_tree.quadrant_digits[i].length - 1) catch @panic("OOM");
+                        digitIncrement(@intCast(i));
+                        const initial_state = state_tree.endingState() catch @panic("OOM");
+                        digitDecrement(@intCast(i));
 
                         // const tester = render.stateFromDigits(
                         //     render.SelfConsumingReaderState.init(0, root_color),
@@ -902,8 +898,8 @@ const WorkCycleState = struct {
                     //     initial_state.iterateMutate(state_tree.quadrant_digits[i].get(j), render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0));
                     // }
 
-                    jsPrint("{}", .{initial_state});
-                    jsPrint("pos: {}", .{initial_state.absolutePosition()});
+                    // jsPrint("{}", .{initial_state});
+                    // jsPrint("pos: {}", .{initial_state.absolutePosition()});
 
                     const color_chunks = this.output_color_chunks[i];
 
@@ -911,7 +907,7 @@ const WorkCycleState = struct {
                         iteration_states[i] = render.FillIterationState.init(
                             allocator,
                             sub_square_size,
-                            state_tree.quadrant_digits[i],
+                            state_tree.digits,
                             initial_state,
                             color_chunks,
                         ) catch @panic("OOM");
@@ -928,7 +924,7 @@ const WorkCycleState = struct {
 
                         iteration_states[i].?.reset(
                             sub_square_size,
-                            state_tree.quadrant_digits[i],
+                            state_tree.digits,
                             initial_state,
                             color_chunks,
                         ) catch @panic("OOM");
@@ -945,11 +941,13 @@ const WorkCycleState = struct {
             for (0..4) |i| {
                 const iteration_state = &(iteration_states[i].?);
 
+                digitIncrement(@intCast(i));
                 const start_time = js.getTime();
 
                 const temp = iteration_state.iterate(iteration_amount);
 
                 const end_time = js.getTime();
+                digitDecrement(@intCast(i));
 
                 if (end_time - start_time > 2) {
                     jsPrint("iteration_state iterate time: {d} ms", .{end_time - start_time});
@@ -1275,14 +1273,14 @@ export fn init() void {
         // };
     }
 
-    // for (0..4) |i| {
-    //     state_tree.appendDigit(i, 0) catch @panic("OOM");
+    // for (0..100000) |i| {
+    //     state_tree.appendDigit(@intCast(i % 4)) catch @panic("OOM");
     // }
 
-    // for (0..100000) |_| {
-    //     for (0..4) |i| {
-    //         state_tree.appendDigit(i, 3) catch @panic("OOM");
-    //     }
+    // state_tree.appendDigit(0) catch @panic("OOM");
+
+    // for (0..1000000) |_| {
+    //     state_tree.appendDigit(3) catch @panic("OOM");
     // }
 
     // const color_file = @embedFile("output_image_small.bin");
@@ -1298,9 +1296,10 @@ export fn init() void {
     //     }
     // }
 
-    for (0..4) |i| {
-        state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
-    }
+    // for (0..4) |i| {
+    //     state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
+    // }
+    state_tree.appendDigit(0) catch @panic("OOM");
 }
 
 var offset_digits_packed_with_digit_offset: []u8 = &.{};
@@ -1343,39 +1342,20 @@ export fn setOffset() void {
             if (idx < offset_digits_packed_count) {
                 // new_offset_digits[i * 4 + j] = @intCast((packed_digit >> @intCast(j * 2)) & 0b11);
                 const digit: u2 = @intCast((packed_digit >> @intCast(j * 2)) & 0b11);
-                for (0..4) |quadrant| {
-                    state_tree.appendDigit(quadrant, digit) catch @panic("OOM");
-                }
+                state_tree.appendDigit(digit) catch @panic("OOM");
             }
         }
     }
 
-    const max_x = state_tree.quadrant_digits[0].isMaxX();
-    const max_y = state_tree.quadrant_digits[0].isMaxY();
+    const max_x = state_tree.digits.isMaxX();
+    const max_y = state_tree.digits.isMaxY();
 
-    for (0..4) |i| {
-        if (max_x) {
-            if (i & 1 == 0) {
-                state_tree.decrementX(i);
-            }
-        } else {
-            if (i & 1 == 1) {
-                state_tree.incrementX(i);
-            }
-        }
-
-        if (max_y) {
-            if (i >> 1 == 0) {
-                state_tree.decrementY(i);
-            }
-        } else {
-            if (i >> 1 == 1) {
-                state_tree.incrementY(i);
-            }
-        }
+    if (max_x) {
+        state_tree.decrementX();
     }
-
-    state_tree.trim(state_tree.quadrant_digits[0].length);
+    if (max_y) {
+        state_tree.decrementY();
+    }
 }
 
 var find_image_data: []render.Color = &.{};
@@ -1417,20 +1397,15 @@ export fn findImage() void {
     state_tree.clearDigits();
     for (0..enc.length) |i| {
         const digit = enc.get(i);
-        for (0..4) |j| {
-            state_tree.appendDigit(j, digit) catch @panic("OOM");
-        }
+
+        state_tree.appendDigit(digit) catch @panic("OOM");
     }
 
-    for (0..4) |i| {
-        state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
-    }
-
-    state_tree.trim(state_tree.quadrant_digits[0].length);
+    state_tree.appendDigit(0) catch @panic("OOM");
 }
 
 export fn getOffsetAlloc() [*]u8 {
-    offset_digits_packed_with_digit_offset = allocator.alloc(u8, ((state_tree.quadrant_digits[0].length + 3) / 4) + 1) catch @panic("OOM");
+    offset_digits_packed_with_digit_offset = allocator.alloc(u8, ((state_tree.digits.length + 3) / 4) + 1) catch @panic("OOM");
     offset_digits_packed = offset_digits_packed_with_digit_offset[0 .. offset_digits_packed_with_digit_offset.len - 1];
 
     for (offset_digits_packed, 0..) |*packed_digit, i| {
@@ -1438,14 +1413,14 @@ export fn getOffsetAlloc() [*]u8 {
         for (0..4) |j| {
             // const idx = ((i + 1) * 4 - j - 1);
             const idx = i * 4 + j;
-            if (idx < state_tree.quadrant_digits[0].length) {
-                const offset_digit = state_tree.quadrant_digits[0].get(idx);
+            if (idx < state_tree.digits.length) {
+                const offset_digit = state_tree.digits.get(idx);
                 packed_digit.* |= @as(u8, offset_digit) << @intCast(j * 2);
             }
         }
     }
 
-    offset_digits_packed_with_digit_offset[offset_digits_packed_with_digit_offset.len - 1] = @intCast(state_tree.quadrant_digits[0].length % 4);
+    offset_digits_packed_with_digit_offset[offset_digits_packed_with_digit_offset.len - 1] = @intCast(state_tree.digits.length % 4);
 
     return offset_digits_packed_with_digit_offset.ptr;
 }

@@ -600,179 +600,74 @@ pub const SelfConsumingReaderState = struct {
 };
 
 pub const StateStems = struct {
-    quadrant_digits: [4]DigitArray,
-    quadrant_digit_backers: [4]std.ArrayListUnmanaged(DigitArray.Backer),
-    quadrant_digit_stem_matches: [4][4]usize,
+    digits: DigitArray,
+    digit_backers: std.ArrayListUnmanaged(DigitArray.Backer),
 
-    stem_initialized: std.DynamicBitSetUnmanaged,
-    stem_digits: DigitArray,
-    stem_digit_backers: std.ArrayListUnmanaged(DigitArray.Backer),
-
-    stems_states: std.MultiArrayList(StemState),
+    states: std.ArrayListUnmanaged(SelfConsumingReaderState),
 
     allocator: std.mem.Allocator,
 
     initial_state: SelfConsumingReaderState,
 
-    pub const Node = struct {
-        initialized: [4]bool,
-
-        digits: [4]u2,
-    };
-
-    pub const StemState = union(enum) {
-        uninitialized,
-        state: SelfConsumingReaderState,
-    };
-
-    // fn getNode(this: StateStems, idx: usize) Node {
-    //     const adjusted_idx = idx * 4;
-    //     var res: Node = undefined;
-
-    //     for (0..4, adjusted_idx..) |i, j| {
-    //         res.initialized[i] = this.stem_initialized.isSet(j);
-    //         res.digits[i] = this.stem_digits.get(j);
-    //     }
-
-    //     return res;
-    // }
-
-    // fn setNode(this: *StateStems, idx: usize, node: Node) void {
-    //     const adjusted_idx = idx * 4;
-
-    //     for (0..4, adjusted_idx..) |i, j| {
-    //         this.stem_initialized.setValue(j, node.initialized[i]);
-    //         this.stem_digits.set(j, node.digits[i]);
-    //     }
-    // }
-
-    fn stemsLength(this: StateStems) usize {
-        return this.stem_digits.length / 4;
-    }
-
-    fn resizeStems(this: *StateStems, new_len: usize) std.mem.Allocator.Error!void {
-        const new_len_adjusted = new_len * 4;
-
-        try this.stem_initialized.resize(this.allocator, new_len_adjusted, false);
-
-        const new_backers_len = DigitArray.backersNeeded(new_len_adjusted);
-        try this.stem_digit_backers.resize(this.allocator, new_backers_len);
-
-        this.stem_digits.digit_backers = this.stem_digit_backers.items;
-        this.stem_digits.length = new_len_adjusted;
-    }
-
-    fn shrinkStems(this: *StateStems, new_len: usize) void {
-        const new_len_adjusted = new_len * 4;
-
-        const new_backers_len = DigitArray.backersNeeded(new_len_adjusted);
-        this.stem_digit_backers.shrinkRetainingCapacity(new_backers_len);
-
-        this.stem_digits.digit_backers = this.stem_digit_backers.items;
-        this.stem_digits.length = new_len_adjusted;
-    }
-
-    const digits_per_state = 16;
+    const digits_per_state: usize = 128;
 
     pub fn init(allocator: std.mem.Allocator, root_color: Color) std.mem.Allocator.Error!StateStems {
-        var quadrant_digit_backers: [4]std.ArrayListUnmanaged(DigitArray.Backer) = undefined;
-        for (&quadrant_digit_backers) |*digit_backers| {
-            digit_backers.* = try std.ArrayListUnmanaged(DigitArray.Backer).initCapacity(allocator, 1);
-        }
+        const digit_backers = try std.ArrayListUnmanaged(DigitArray.Backer).initCapacity(allocator, 1);
 
-        var quadrant_digits: [4]DigitArray = undefined;
-        for (&quadrant_digits, &quadrant_digit_backers) |*digits, digit_backers| {
-            digits.* = .{
+        return .{
+            .digits = .{
                 .digit_backers = digit_backers.items,
                 .length = 0,
-            };
-        }
-
-        const stems_states: std.MultiArrayList(StemState) = .{};
-
-        const initial_state = SelfConsumingReaderState.init(0, root_color);
-
-        const stem_initialized = try std.DynamicBitSetUnmanaged.initEmpty(allocator, 0);
-
-        const stem_digit_backers = try std.ArrayListUnmanaged(DigitArray.Backer).initCapacity(allocator, 1);
-
-        const stems_digits: DigitArray = .{
-            .digit_backers = stem_digit_backers.items,
-            .length = 0,
-        };
-
-        var res: StateStems = .{
-            .quadrant_digits = quadrant_digits,
-            .quadrant_digit_backers = quadrant_digit_backers,
-            .quadrant_digit_stem_matches = @splat(@splat(0)),
-
-            .stem_initialized = stem_initialized,
-            .stem_digits = stems_digits,
-            .stem_digit_backers = stem_digit_backers,
-            .stems_states = stems_states,
+            },
+            .digit_backers = digit_backers,
+            .states = try std.ArrayListUnmanaged(SelfConsumingReaderState).initCapacity(allocator, 1),
             .allocator = allocator,
-            .initial_state = initial_state,
+            .initial_state = SelfConsumingReaderState.init(0, root_color),
         };
-
-        try res.resizeStems(1);
-
-        for (0..4) |i| {
-            res.stem_digits.set(i, @intCast(i));
-            res.stem_initialized.set(i);
-        }
-
-        return res;
     }
 
     pub fn deinit(this: *StateStems) void {
-        for (&this.quadrant_digit_backers) |*digit_backers| {
-            digit_backers.deinit(this.allocator);
-        }
-
-        this.stem_initialized.deinit(this.allocator);
-        this.stem_digit_backers.deinit(this.allocator);
-        this.stems_states.deinit(this.allocator);
+        this.digit_backers.deinit(this.allocator);
+        this.states.deinit(this.allocator);
     }
 
-    pub fn appendDigit(this: *StateStems, quadrant: usize, digit: u2) std.mem.Allocator.Error!void {
-        const prev_length = this.quadrant_digits[quadrant].length;
+    pub fn appendDigit(this: *StateStems, digit: u2) std.mem.Allocator.Error!void {
+        const prev_length = this.digits.length;
 
         const new_backers_len = DigitArray.backersNeeded(prev_length + 1);
-        try this.quadrant_digit_backers[quadrant].resize(this.allocator, new_backers_len);
 
-        this.quadrant_digits[quadrant].digit_backers = this.quadrant_digit_backers[quadrant].items;
-        this.quadrant_digits[quadrant].length = prev_length + 1;
+        try this.digit_backers.resize(this.allocator, new_backers_len);
 
-        this.quadrant_digits[quadrant].set(prev_length, digit);
+        this.digits.digit_backers = this.digit_backers.items;
+        this.digits.length = prev_length + 1;
+
+        this.digits.set(prev_length, digit);
     }
 
-    pub fn removeDigit(this: *StateStems, quadrant: usize) void {
-        const prev_length = this.quadrant_digits[quadrant].length;
+    pub fn removeDigit(this: *StateStems) void {
+        const prev_length = this.digits.length;
 
         const new_backers_len = DigitArray.backersNeeded(prev_length - 1);
-        this.quadrant_digit_backers[quadrant].shrinkRetainingCapacity(new_backers_len);
+        this.digit_backers.shrinkRetainingCapacity(new_backers_len);
 
-        this.quadrant_digits[quadrant].digit_backers = this.quadrant_digit_backers[quadrant].items;
-        this.quadrant_digits[quadrant].length = prev_length - 1;
+        this.digits.digit_backers = this.digit_backers.items;
+        this.digits.length = prev_length - 1;
 
-        for (&this.quadrant_digit_stem_matches[quadrant]) |*matches| {
-            matches.* = @min(matches.*, this.quadrant_digits[quadrant].length);
-        }
+        this.states.shrinkRetainingCapacity(@min(this.states.items.len, this.digits.length / digits_per_state));
     }
 
     pub fn clearDigits(this: *StateStems) void {
-        for (0..4) |i| {
-            this.quadrant_digit_backers[i].shrinkRetainingCapacity(0);
-            this.quadrant_digits[i].digit_backers = this.quadrant_digit_backers[i].items;
-            this.quadrant_digits[i].length = 0;
-            this.quadrant_digit_stem_matches[i] = @splat(0);
-        }
+        this.digit_backers.shrinkRetainingCapacity(0);
+        this.digits.digit_backers = this.digit_backers.items;
+        this.digits.length = 0;
+        this.states.shrinkRetainingCapacity(0);
     }
 
-    pub fn incrementX(this: *StateStems, quadrant: usize) void {
-        const digits = this.quadrant_digits[quadrant];
+    pub fn incrementX(this: *StateStems) void {
+        const digits = this.digits;
 
         var i: usize = digits.length - 1;
+
         while (true) {
             const digit = digits.get(i);
             if (digit & 0b01 == 0b01) {
@@ -785,13 +680,11 @@ pub const StateStems = struct {
             i -= 1;
         }
 
-        for (&this.quadrant_digit_stem_matches[quadrant]) |*matches| {
-            matches.* = @min(matches.*, i);
-        }
+        this.states.shrinkRetainingCapacity(@min(this.states.items.len, i / digits_per_state));
     }
 
-    pub fn incrementY(this: *StateStems, quadrant: usize) void {
-        const digits = this.quadrant_digits[quadrant];
+    pub fn incrementY(this: *StateStems) void {
+        const digits = this.digits;
 
         var i: usize = digits.length - 1;
         while (true) {
@@ -806,13 +699,11 @@ pub const StateStems = struct {
             i -= 1;
         }
 
-        for (&this.quadrant_digit_stem_matches[quadrant]) |*matches| {
-            matches.* = @min(matches.*, i);
-        }
+        this.states.shrinkRetainingCapacity(@min(this.states.items.len, i / digits_per_state));
     }
 
-    pub fn decrementX(this: *StateStems, quadrant: usize) void {
-        const digits = this.quadrant_digits[quadrant];
+    pub fn decrementX(this: *StateStems) void {
+        const digits = this.digits;
 
         var i: usize = digits.length - 1;
         while (true) {
@@ -827,13 +718,11 @@ pub const StateStems = struct {
             i -= 1;
         }
 
-        for (&this.quadrant_digit_stem_matches[quadrant]) |*matches| {
-            matches.* = @min(matches.*, i);
-        }
+        this.states.shrinkRetainingCapacity(@min(this.states.items.len, i / digits_per_state));
     }
 
-    pub fn decrementY(this: *StateStems, quadrant: usize) void {
-        const digits = this.quadrant_digits[quadrant];
+    pub fn decrementY(this: *StateStems) void {
+        const digits = this.digits;
 
         var i: usize = digits.length - 1;
         while (true) {
@@ -848,285 +737,38 @@ pub const StateStems = struct {
             i -= 1;
         }
 
-        for (&this.quadrant_digit_stem_matches[quadrant]) |*matches| {
-            matches.* = @min(matches.*, i);
-        }
+        this.states.shrinkRetainingCapacity(@min(this.states.items.len, i / digits_per_state));
     }
 
-    pub fn trim(this: *StateStems, new_length: usize) void {
-        if (new_length < this.stemsLength()) {
-            this.shrinkStems(new_length);
-        }
-
-        const new_states_length = new_length / digits_per_state;
-        const new_states_length_adjusted = new_states_length * 4;
-
-        if (new_states_length_adjusted < this.stems_states.len) {
-            this.stems_states.shrinkRetainingCapacity(new_states_length_adjusted);
-        }
+    pub fn trim(this: *StateStems) void {
+        this.digit_backers.shrinkAndFree(this.digit_backers.items.len);
+        this.states.shrinkAndFree(this.states.items.len);
     }
 
-    // Assumes adjusted_idx is a multiple of 4.
-    fn get4Initialized(this: StateStems, adjusted_idx: usize) @Vector(4, u1) {
-        const ShiftInt = std.DynamicBitSetUnmanaged.ShiftInt;
+    pub fn endingState(this: *StateStems) std.mem.Allocator.Error!SelfConsumingReaderState {
+        var states: [2]SelfConsumingReaderState = undefined;
+        states[0] = if (this.states.items.len == 0) this.initial_state else this.states.items[this.states.items.len - 1];
 
-        const shift: ShiftInt = @truncate(adjusted_idx);
+        var current_state = &states[0];
+        var next_state = &states[1];
 
-        const mask_idx = adjusted_idx >> @bitSizeOf(ShiftInt);
+        const start_idx = this.states.items.len * digits_per_state;
 
-        return @bitCast(@as(u4, @truncate(this.stem_initialized.masks[mask_idx] >> shift)));
-    }
+        for (start_idx..this.digits.length) |i| {
+            const digit = this.digits.get(i);
 
-    fn swapAdjacentBitsAt(val: u8, comptime idx: comptime_int) u8 {
-        if (idx & 1 == 0) {
-            const all_swapped = ((val & 0b10101010) >> 1) | ((val & 0b01010101) << 1);
+            current_state.iterate(digit, VirtualDigitArray.fromDigitArray(this.digits, 0, 0, 0), next_state);
 
-            const shift = idx;
+            const temp = current_state;
+            current_state = next_state;
+            next_state = temp;
 
-            const mask = @as(u8, 0b11) << shift;
-            const mask_inv = ~mask;
-
-            return (val & mask_inv) | (all_swapped & mask);
-        }
-
-        const all_swapped = ((((val << 1) & 0b10101010) >> 1) | (((val << 1) & 0b01010101) << 1)) >> 1;
-
-        const shift = idx;
-
-        const mask = @as(u8, 0b11) << shift;
-        const mask_inv = ~mask;
-
-        return (val & mask_inv) | (all_swapped & mask);
-    }
-
-    pub fn stateAt(this: *StateStems, quadrant: usize, position: usize) std.mem.Allocator.Error!SelfConsumingReaderState {
-        const path = VirtualDigitArray.fromDigitArray(this.quadrant_digits[quadrant], 0, 0, 0);
-        const digit_count = position + 1;
-
-        // const start_time = getTime();
-        // defer {
-        //     const end_time = getTime();
-
-        //     jsPrint("state stems traverse time: {d} ms", .{end_time - start_time});
-        // }
-
-        var in_path: u8 = 0;
-
-        var starting_digit_idx: usize = 0;
-        for (this.quadrant_digit_stem_matches[quadrant]) |matches| {
-            starting_digit_idx = @max(starting_digit_idx, matches);
-        }
-
-        for (this.quadrant_digit_stem_matches[quadrant], 0..) |matches, i| {
-            if (matches >= starting_digit_idx) {
-                in_path |= @as(u8, 1) << @intCast(i);
+            if ((i + 1) % digits_per_state == 0) {
+                try this.states.append(this.allocator, current_state.*);
             }
         }
 
-        // jsPrint("starting_digit_idx: {} digit_count: {}", .{ starting_digit_idx, digit_count });
-
-        for (starting_digit_idx..digit_count) |digit_idx| {
-            for (&this.quadrant_digit_stem_matches[quadrant], 0..) |*matches, i| {
-                if (((in_path >> @intCast(i)) & 1) == 1) {
-                    matches.* = @max(matches.*, digit_idx);
-                }
-            }
-
-            const digit = path.get(digit_idx);
-
-            if (this.stemsLength() == digit_idx) {
-                var in_path_bool: [4]bool = undefined;
-                for (0..4) |i| {
-                    in_path_bool[i] = ((in_path >> @intCast(i)) & 1) == 1;
-                }
-
-                return try this.overwriteStem(quadrant, digit_count, digit_idx, in_path_bool);
-            }
-
-            const adjusted_digit_idx = digit_idx * 4;
-
-            const current_digits: u8 = blk: {
-                std.debug.assert(DigitArray.digits_per_backer % 4 == 0);
-
-                const backer = this.stem_digits.digit_backers[adjusted_digit_idx / DigitArray.digits_per_backer];
-
-                const shift = (adjusted_digit_idx % (DigitArray.digits_per_backer)) * 2;
-
-                const backer_vec: @Vector(4, u2) = @bitCast(@as(u8, @truncate(backer >> @intCast(shift))));
-
-                const current_digits_bools = backer_vec == @as(@Vector(4, u2), @splat(digit));
-
-                const current_digits_u4: u4 = @bitCast(current_digits_bools);
-
-                break :blk current_digits_u4;
-            };
-
-            // var test_current_digits: u8 = 0;
-            // for (0..4, adjusted_digit_idx..) |i, j| {
-            //     test_current_digits |= @as(u8, @intFromBool(this.stem_digits.get(j) == digit)) << @intCast(i);
-            // }
-            // std.debug.assert(test_current_digits == current_digits);
-
-            const current_initialized: u8 = blk: {
-                const ShiftInt = std.DynamicBitSetUnmanaged.ShiftInt;
-
-                const shift: ShiftInt = @truncate(adjusted_digit_idx);
-
-                const mask_idx = adjusted_digit_idx >> @bitSizeOf(ShiftInt);
-
-                break :blk @intCast((this.stem_initialized.masks[mask_idx] >> shift) & 0b1111);
-            };
-
-            // for (0..4, adjusted_digit_idx..) |i, j| {
-            //     std.debug.assert(current_initialized[i] == @intFromBool(this.stem_initialized.isSet(j)));
-            // }
-
-            const next_in_path = in_path & current_digits & current_initialized;
-
-            if (next_in_path == 0) {
-                var in_path_bool: [4]bool = undefined;
-                for (0..4) |i| {
-                    in_path_bool[i] = ((in_path >> @intCast(i)) & 1) == 1;
-                }
-
-                return try this.overwriteStem(quadrant, digit_count, digit_idx, in_path_bool);
-            }
-
-            in_path = next_in_path;
-        }
-
-        for (0..4) |i| {
-            if (((in_path >> @intCast(i)) & 1) == 1) {
-                return try this.getState(digit_count - 1, i, path);
-            }
-        }
-        unreachable;
-    }
-
-    fn overwriteStem(this: *StateStems, quadrant: usize, digit_count: usize, initial_digit_idx: usize, in_path: [4]bool) std.mem.Allocator.Error!SelfConsumingReaderState {
-        const path = VirtualDigitArray.fromDigitArray(this.quadrant_digits[quadrant], 0, 0, 0);
-
-        var overwrite_idx: usize = for (0..4) |i| {
-            if (in_path[i]) {
-                break i;
-            }
-        } else unreachable;
-
-        this.quadrant_digit_stem_matches[quadrant][overwrite_idx] = digit_count;
-        for (0..4) |i| {
-            if (i != quadrant) {
-                this.quadrant_digit_stem_matches[i][overwrite_idx] = @min(this.quadrant_digit_stem_matches[i][overwrite_idx], initial_digit_idx);
-            }
-        }
-
-        if (initial_digit_idx < this.stemsLength()) {
-            const initial_digit_idx_adjusted = initial_digit_idx * 4;
-
-            overwrite_idx = for (0..4, initial_digit_idx_adjusted..) |i, j| {
-                if (in_path[i] and !this.stem_initialized.isSet(j)) {
-                    break i;
-                }
-            } else overwrite_idx;
-        }
-
-        // jsPrint("len recalc: {}", .{digit_count - initial_digit_idx});
-
-        for (initial_digit_idx..digit_count) |digit_idx| {
-            const digit = path.get(digit_idx);
-
-            if (this.stemsLength() == digit_idx) {
-                for (0..4) |i| {
-                    this.invalidateState(digit_idx, i);
-                }
-
-                try this.resizeStems(this.stemsLength() + 1);
-
-                const new_node_idx_adjusted = (this.stemsLength() - 1) * 4;
-
-                for (new_node_idx_adjusted..new_node_idx_adjusted + 4) |i| {
-                    this.stem_initialized.unset(i);
-                }
-            }
-
-            this.invalidateState(digit_idx, overwrite_idx);
-
-            const adjusted_digit_idx = digit_idx * 4;
-
-            this.stem_initialized.set(adjusted_digit_idx + overwrite_idx);
-            this.stem_digits.set(adjusted_digit_idx + overwrite_idx, digit);
-        }
-
-        for (digit_count..this.stemsLength()) |i| {
-            const adjusted_i = i * 4;
-
-            this.stem_initialized.unset(adjusted_i + overwrite_idx);
-
-            this.invalidateState(i, overwrite_idx);
-        }
-
-        return try this.getState(digit_count - 1, overwrite_idx, path);
-    }
-
-    fn invalidateState(this: *StateStems, digit_idx: usize, stem_idx: usize) void {
-        const idx_divided = digit_idx / digits_per_state;
-
-        const idx_adjusted = idx_divided * 4 + stem_idx;
-
-        if (this.stems_states.len <= idx_adjusted) {
-            return;
-        }
-
-        this.stems_states.set(idx_adjusted, .uninitialized);
-    }
-
-    fn getState(this: *StateStems, digit_idx: usize, stem_idx: usize, digits: VirtualDigitArray) std.mem.Allocator.Error!SelfConsumingReaderState {
-        const idx_adjusted = (digit_idx / digits_per_state) * 4 + stem_idx;
-
-        if (this.stems_states.len <= idx_adjusted) {
-            for ((idx_adjusted + 1) - this.stems_states.len) |_| {
-                try this.stems_states.append(this.allocator, .uninitialized);
-            }
-        }
-
-        const state_idx_target = (digit_idx / digits_per_state) * 4 + stem_idx;
-
-        var state_idx = state_idx_target;
-
-        while (state_idx > 3 and this.stems_states.get(state_idx) == .uninitialized) {
-            state_idx -= 4;
-        }
-
-        // jsPrint("state recalc: {}", .{(digit_idx + 1) - ((state_idx / 4) * digits_per_state + 1)});
-
-        var state: SelfConsumingReaderState = undefined;
-
-        if (state_idx < 4) {
-            this.initial_state.iterate(@intCast(this.stem_digits.get(0 + stem_idx)), digits, &state);
-        } else {
-            state = this.stems_states.get(state_idx).state;
-        }
-
-        for ((state_idx / 4) * digits_per_state + 1..digit_idx + 1) |idx| {
-            if ((idx - 1) % digits_per_state == 0) {
-                this.stems_states.set((idx / digits_per_state) * 4 + stem_idx, .{
-                    .state = state,
-                });
-            }
-
-            const adjusted_idx = idx * 4;
-
-            var next_state: SelfConsumingReaderState = undefined;
-            state.iterate(this.stem_digits.get(adjusted_idx + stem_idx), digits, &next_state);
-            state = next_state;
-        }
-
-        if (digit_idx % digits_per_state == 0) {
-            this.stems_states.set((digit_idx / digits_per_state) * 4 + stem_idx, .{
-                .state = state,
-            });
-        }
-
-        return state;
+        return current_state.*;
     }
 };
 
@@ -2508,11 +2150,11 @@ fn splitColorAltPathSimd(color: [3]u8, splitters: [10]u8) [4][3]u8 {
 
     var target_vec_signed =
         @select(
-        i32,
-        color_component_vec < @as(@Vector(3, u8), @splat(128)),
-        @as(@Vector(3, i32), @splat(1)),
-        @as(@Vector(3, i32), @splat(-1)),
-    );
+            i32,
+            color_component_vec < @as(@Vector(3, u8), @splat(128)),
+            @as(@Vector(3, i32), @splat(1)),
+            @as(@Vector(3, i32), @splat(-1)),
+        );
 
     //var target_vec_signed:@Vector(3, i32) = @intFromBool(color_component_vec < @as(@Vector(3, u8), @splat(128)));
     //target_vec_signed *= @splat(2);
