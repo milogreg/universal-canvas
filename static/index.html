@@ -3,8 +3,10 @@
     <head>
         <meta name="viewport" content="width=device-width" />
         <title>Square</title>
-        <link rel="stylesheet" href="style.css" />
+
         <link rel="stylesheet" href="normalize.css" />
+        <link rel="stylesheet" href="style.css" />
+
         <link
             rel="shortcut icon"
             href="data:image/x-icon;,"
@@ -14,135 +16,213 @@
 
     <body>
         <main>
-            <div class="menu-overlay">
-                <input id="hamburger-toggle" type="checkbox" />
-                <label class="hamburger" for="hamburger-toggle">
-                    <div class="top"></div>
-                    <div class="meat"></div>
-                    <div class="bottom"></div>
-                </label>
+            <div class="top-container">
+                <hgroup>
+                    <h1>The Universal Canvas</h1>
+                    <p><em>By Milo Kinkead</em></p>
+                </hgroup>
 
-                <div class="config-container">
-                    <div>
-                        <table>
-                            <tr>
-                                <td>
-                                    <label for="zoom-rate-input"
-                                        >Click zoom rate:</label
-                                    >
-                                </td>
-                                <td>
-                                    <input
-                                        type="range"
-                                        id="zoom-rate-input"
-                                        min="-3"
-                                        max="5"
-                                        step="any"
-                                        value="1"
-                                    />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <label for="scroll-zoom-rate-input"
-                                        >Scroll zoom rate:</label
-                                    >
-                                </td>
-                                <td>
-                                    <input
-                                        type="range"
-                                        id="scroll-zoom-rate-input"
-                                        min="-3"
-                                        max="5"
-                                        step="any"
-                                        value="1"
-                                    />
-                                </td>
-                            </tr>
-                        </table>
-
-                        <div>
-                            <label for="click-zoom-toggle"
-                                >Click to Zoom:</label
-                            >
-                            <input type="checkbox" id="click-zoom-toggle" />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label for="find-image-input">Search for image:</label>
-                        <input
-                            type="file"
-                            id="find-image-input"
-                            accept="image/*"
-                        />
-                        <div id="find-image-drop-zone" class="drop-zone">
-                            Drop image
-                        </div>
-                    </div>
-
-                    <div>
-                        <div>
-                            <label for="file-input"
-                                >Load position from file:</label
-                            >
-                            <input type="file" id="file-input" />
-                        </div>
-                        <button id="set-position">Set Position</button>
-                    </div>
-                    <div>
-                        <button id="save-offset">Save Position</button>
-                    </div>
-                </div>
+                <hr />
+                <canvas-component-controls>
+                    <canvas-component></canvas-component>
+                </canvas-component-controls>
+                <hr />
             </div>
+            <div class="max-width-container">
+                <h2>What am I looking at?</h2>
+                <p>
+                    The Universal Canvas is infinitely detailed and contains
+                    every finite pattern. This means that any possible image of
+                    any resolution can be found within the Universal Canvas,
+                    simply by zooming in.
+                </p>
+                <p>
+                    It goes beyond that, though. Not only does every image exist
+                    within the Universal Canvas, every image exists within every
+                    subdivision of the Canvas. So, if you cut a section out of
+                    the canvas, no matter how small, that section will also
+                    contain every possible image.
+                </p>
 
-            <div id="canvas-container">
-                <canvas id="display-canvas"></canvas>
-                <canvas id="old-display-canvas"></canvas>
-                <div id="canvas-loading"></div>
+                <hr />
+                <h2>What does this actually mean?</h2>
+                <p>
+                    In the first section, I glossed over how a 'pattern' or an
+                    'image' is actually defined. If an image was just a grid of
+                    pixels, each having a perfect solid color, then what I said
+                    about every subdivision containing every image would
+                    obviously be impossible, as the subdivision of a single
+                    black pixel would contain nothing but black.
+                </p>
+                <p>
+                    The way that I define an image is as a grid of pixels, each
+                    of which has not a solid color, but an average color. This
+                    way, a rendered image can have the appearance of solid
+                    colors due to the averaging of details smaller than a pixel,
+                    while still having infinite detail within each pixel. So, an
+                    image 'existing' at a given resolution really means that
+                    there exists some region within the Universal Canvas, that,
+                    if rendered at said resolution by averaging details smaller
+                    than a pixel, would produce the image.
+                </p>
+
+                <hr />
+                <h2>How is it implemented?</h2>
+                <p>
+                    So, I've gone on about how the Universal Canvas has infinite
+                    detail and contains infinite information, but at the end of
+                    the day there needs to be some way to simulate it without
+                    actually doing infinite computation and storing infinite
+                    data.
+                </p>
+                <p>
+                    Lorem, ipsum dolor sit amet consectetur adipisicing elit.
+                    Reiciendis at molestiae officia ab ducimus consequuntur,
+                    placeat ipsam explicabo sapiente, deleniti voluptate quasi
+                    iure perferendis harum nihil exercitationem voluptas.
+                    Provident, tempore.
+                </p>
+
+                <hr />
+                <h2>Lorem, ipsum.</h2>
+                <p>
+                    Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                    Dicta et ducimus natus cum consequatur dolorem adipisci
+                    illum unde nesciunt libero eveniet, minus reiciendis
+                    laudantium aliquid similique officiis molestias. Labore ex
+                    velit obcaecati voluptate assumenda molestiae cum, in
+                    perspiciatis? Ab tempora beatae saepe modi nisi consequatur
+                    adipisci blanditiis perspiciatis dicta! Nam, perferendis
+                    natus cum ut voluptatum suscipit at repudiandae doloremque
+                    totam ducimus eius facere. Nihil velit nulla error libero
+                    tenetur, maxime ad eligendi quia rerum distinctio incidunt.
+                    Tempore, totam autem aliquam laudantium sed distinctio
+                    quidem eius nostrum ipsam quos delectus error non temporibus
+                    nobis dicta dolor omnis amet dignissimos vel fugit labore et
+                    illo? Nihil sequi recusandae, deleniti sed cumque quos
+                    aliquam ipsam pariatur quia corrupti? Necessitatibus soluta,
+                    maxime, praesentium architecto natus repellendus, explicabo
+                    itaque cupiditate dolorem magnam ipsam quisquam! Assumenda,
+                    sunt vel. Blanditiis aut iusto ipsam quisquam, voluptas
+                    itaque nihil eum possimus necessitatibus cupiditate
+                    exercitationem distinctio sunt dolores provident adipisci et
+                    laborum ducimus nostrum voluptate assumenda consectetur
+                    molestias quae repellat iure. Sunt architecto molestiae
+                    obcaecati velit voluptate libero soluta debitis quidem
+                    deleniti nesciunt. Aperiam nobis vitae natus accusamus odit
+                    voluptas dolorum minima corrupti corporis eum eos deserunt
+                    vero repellat ratione voluptatibus, non molestias tempora
+                    tenetur! Provident, ducimus. Modi fuga et error sed vel
+                    doloremque deleniti quos numquam odio saepe neque quod ad
+                    cupiditate, sit veritatis totam architecto repellendus? At
+                    soluta rem assumenda consequatur! Qui enim error repellat
+                    suscipit soluta sit assumenda ullam in perspiciatis autem,
+                    perferendis, voluptas corporis corrupti, tempore maxime
+                    fugiat quibusdam. Cupiditate dolores totam provident, sit
+                    molestiae maxime, minus mollitia veniam, illo sed
+                    reiciendis. Quam saepe quos doloribus facere sed deserunt
+                    quod mollitia nesciunt impedit possimus. Assumenda magni
+                    eaque quod cum, nemo doloribus architecto nam culpa omnis
+                    enim quam alias consequatur vero maiores, laboriosam totam
+                    facere distinctio. Modi, totam beatae? Rem nam modi tempora
+                    quisquam laboriosam blanditiis cum impedit perspiciatis vero
+                    animi cumque obcaecati optio nostrum dignissimos quidem
+                    voluptatem, sapiente aut tempore. Porro culpa fugiat vero ad
+                    sapiente exercitationem consequatur atque voluptatum
+                    architecto quaerat, aperiam adipisci minus dolorum
+                    laudantium ut ea, delectus itaque? Doloremque, quod
+                    repellat! Aperiam dolorem repellat vero ab esse repudiandae,
+                    illo dolor sapiente ratione veniam ducimus eius dicta
+                    doloremque autem, a laboriosam harum sint doloribus! Nisi
+                    culpa quia molestiae reiciendis sed autem voluptatem
+                    perferendis aspernatur voluptate ullam fugit id ducimus ad,
+                    voluptates ipsum ab rerum nam tempora dolorem veniam dolor?
+                    Quo voluptatum totam qui perferendis? Reiciendis aspernatur
+                    harum dolorum maxime saepe, recusandae sunt vel mollitia
+                    omnis distinctio! Dolorum repellat cupiditate modi libero
+                    quod amet dignissimos eum consequatur delectus laborum alias
+                    error sapiente iusto dolores obcaecati vitae, velit quis
+                    quaerat nam earum assumenda? Nesciunt reprehenderit sint,
+                    optio distinctio eligendi, quasi fugiat numquam aspernatur
+                    laboriosam hic obcaecati neque, impedit provident maiores
+                    asperiores. Cumque maxime temporibus facere quibusdam error
+                    voluptatum ipsa, itaque perferendis sit culpa aspernatur
+                    quis asperiores mollitia libero dicta quae omnis ratione
+                    deleniti reprehenderit eius quidem. Laboriosam, non eum!
+                    Officia maiores dignissimos molestias minima nisi. Impedit,
+                    minus modi quos nam temporibus aut minima optio, omnis nulla
+                    repellendus dolorem totam alias, facere dolores voluptate
+                    maxime nobis architecto aperiam sint consequuntur
+                    consequatur ipsa. Veritatis labore cumque sint? Ipsa
+                    dignissimos saepe, temporibus quasi provident similique
+                    voluptatem voluptates consequuntur vitae ducimus, voluptate
+                    architecto sint esse illum rem quam aut. Ipsam alias enim
+                    mollitia temporibus dolores tempora modi tenetur molestias
+                    nam inventore exercitationem sequi earum velit, iure fugiat
+                    omnis. Dignissimos amet quas enim in. Culpa libero
+                    cupiditate praesentium tempore veniam quaerat aperiam
+                    numquam mollitia, est sunt ex sint doloribus, necessitatibus
+                    quidem. Iusto pariatur, ab vero consectetur velit, quae
+                    quibusdam dolores dolorem repudiandae commodi minima numquam
+                    rem explicabo consequuntur labore, reprehenderit quidem
+                    aliquid cum voluptates voluptatibus. Dicta iusto quod earum,
+                    perspiciatis pariatur quo. Hic libero quia rerum maiores
+                    dolore cumque assumenda, corrupti non quae ipsa quidem
+                    doloremque minima odit dolores consequuntur aliquam. Autem
+                    quisquam sed debitis porro in commodi vero aliquam quaerat
+                    ad similique aperiam minus necessitatibus mollitia dolorum
+                    culpa accusamus at, veniam eum sint voluptatem laboriosam
+                    doloremque et. Debitis sunt sed iure similique sequi
+                    laudantium voluptates? Laboriosam delectus eaque vero
+                    excepturi explicabo sequi quia quas fugiat. Harum accusamus,
+                    doloremque laborum asperiores, ad laboriosam recusandae
+                    numquam magni quisquam, voluptatem et voluptatum magnam
+                    molestiae consequuntur facilis id? Ab optio quibusdam hic
+                    quos nulla est voluptatibus sint corporis ullam a ducimus
+                    quia, atque itaque saepe nemo, eius et aspernatur. Molestias
+                    incidunt asperiores laboriosam fugiat eum facere, impedit
+                    illo voluptates a vero consectetur quisquam dolorem vitae
+                    ipsa numquam, deserunt animi ad nesciunt minima, magnam
+                    sequi laudantium facilis? Facere impedit labore nesciunt
+                    expedita reprehenderit minima! Repellendus fuga esse
+                    accusamus reprehenderit ab quibusdam aut, deleniti
+                    necessitatibus impedit a dolores molestiae labore provident
+                    totam odit delectus distinctio optio? Earum ullam
+                    praesentium labore, iusto, quae itaque animi dignissimos
+                    accusamus maiores nemo, iste quaerat odio fugiat? Ad magnam
+                    doloribus eligendi molestias perferendis incidunt nobis?
+                    Voluptate expedita a mollitia, esse saepe temporibus nulla
+                    sapiente voluptatum dolores itaque at quo minus ipsa quia
+                    atque magni accusantium aut nesciunt incidunt hic numquam
+                    provident eos qui dignissimos. Sequi aspernatur laudantium
+                    laboriosam? Blanditiis alias soluta quidem iusto
+                    voluptatibus sequi. Quis quas quia incidunt quasi molestias
+                    laboriosam error est explicabo! Totam soluta, illum dolore
+                    quae reiciendis quos illo numquam consequuntur vitae tenetur
+                    recusandae fuga! Asperiores iste eum ratione! Ipsa eaque
+                    voluptatibus id odio molestias architecto delectus,
+                    assumenda officiis est hic. Illo molestias pariatur officia
+                    accusantium repudiandae, tenetur excepturi dignissimos
+                    numquam ipsam eos facilis ab id consectetur labore
+                    aspernatur est necessitatibus. Vero, non enim! Ipsa rerum
+                    sapiente odio veniam et rem iste in cupiditate eligendi
+                    dolore quae harum, culpa excepturi nesciunt recusandae amet
+                    quod dolores soluta eos ullam consequuntur est
+                    exercitationem. Accusantium hic dicta velit quasi! Eius amet
+                    numquam consequuntur quisquam debitis expedita esse quia
+                    totam quas sit est, magnam vero voluptates sed voluptatum
+                    nam atque qui nemo nihil ut deleniti vitae? Officiis commodi
+                    excepturi tempore porro, similique aperiam iusto. Dolorem
+                    ipsa enim dolor a dolore, voluptas id. Odit suscipit
+                    repellat ut autem voluptatum ullam iure reiciendis beatae,
+                    dolores voluptates quisquam aperiam veniam hic velit!
+                    Accusamus culpa nobis numquam veritatis possimus quos!
+                    Iusto, modi ab a accusantium sit illo placeat in. Explicabo,
+                    excepturi! Voluptatibus, excepturi. Dolor, temporibus.
+                </p>
             </div>
         </main>
-        <script src="script.js"></script>
+        <script src="canvas-component.js"></script>
+        <script src="canvas-component-controls.js"></script>
     </body>
-
-    <!-- <style>
-        :root {
-            --hovering: 0px;
-        }
-
-        :root:hover {
-            --hovering: 1px;
-        }
-
-        #hover-detector {
-            width: var(--hovering);
-
-            color: hsl(
-                calc(var(--hovering) * 120),
-                100%,
-                50%
-            ); /* Green on hover, red otherwise */
-        }
-    </style>
-
-    <div id="hover-detector"></div>
-
-    <script>
-        const hoverDetector = document.getElementById("hover-detector");
-
-        const resizeObserver = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-
-                if (width === 1) {
-                    console.log("Mouse is in window.");
-                } else {
-                    console.log("Mouse is not in window.");
-                }
-            }
-        });
-
-        // Start observing the size changes of the element
-        resizeObserver.observe(hoverDetector);
-    </script> -->
 </html>
