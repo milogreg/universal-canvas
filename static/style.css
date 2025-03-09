@@ -1,225 +1,120 @@
 :root {
-    --hamburger-size: 2rem;
+    --bg-button: rgb(59, 130, 163);
+    --bg-button-hover: rgb(43, 103, 131);
+    --bg-primary: #eeeeee;
+    --bg-secondary: #f5f5f5;
+    --border-color: rgb(160, 160, 160);
+    --text-primary: #222222;
+    --text-button: rgb(245, 245, 245);
+
+    --paragraph-font-size-multiplier: 1.2;
 }
 
-.hamburger {
-    background-color: rgba(255, 255, 255, 0.671);
-    box-shadow: inset 0 0 0.5rem rgba(0, 0, 0, 0.582);
-    border-radius: 0.5rem;
-
-    display: flex;
-    flex-direction: column;
-
-    width: var(--hamburger-size);
-    height: calc(var(--hamburger-size) * 0.875);
-
-    padding: calc(var(--hamburger-size) * 0.1875);
-
-    z-index: 3;
-}
-
-.hamburger:active {
-    transition: all 0.2s ease-in-out;
-    transform: scale(0.9);
-}
-
-.hamburger div {
-    background-color: black;
-    height: calc(var(--hamburger-size) * 0.15625);
-    transition: all 0.1s ease-in-out;
-}
-
-#hamburger-toggle {
-    display: none;
-}
-
-#hamburger-toggle:not(:checked)+.hamburger {
-    justify-content: space-between;
-}
-
-
-#hamburger-toggle:checked+.hamburger .top {
-    transform: rotate(-45deg) translateX(calc(var(--hamburger-size) * -0.25)) translateY(calc(var(--hamburger-size) * 0.25));
-}
-
-#hamburger-toggle:checked+.hamburger .meat {
-    transform: rotate(45deg) translateX(calc(var(--hamburger-size) * 0.15)) translateY(calc(var(--hamburger-size) * 0.15));
-}
-
-#hamburger-toggle:checked+.hamburger .bottom {
-    transform: scale(0);
-}
-
-#hamburger-toggle:not(:checked)~.config-container {
-    display: none;
-}
-
-.menu-overlay {
-    top: 0.5rem;
-    left: 0.5rem;
-    position: fixed;
-    display: block;
-    z-index: 3;
-}
-
-html {
-    height: 100%;
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-button: rgb(43, 103, 131);
+        --bg-button-hover: rgb(32, 77, 99);
+        --bg-primary: rgb(34, 34, 34);
+        --bg-secondary: rgb(46, 46, 46);
+        --text-primary: rgb(137, 137, 137);
+        --text-primary: rgb(231, 231, 231);
+    }
 }
 
 body {
-    height: 100%;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+
+
+    padding-left: 1rem;
+    padding-right: 1rem;
+    box-sizing: border-box;
+}
+
+
+/* Small devices (phones, 576px and up) */
+@media (min-width: 36rem) {
+    body {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 48rem) {
+    body {
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+}
+
+/* Large devices (desktops, 992px and up) */
+@media (min-width: 62rem) {
+    body {
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+}
+
+/* Extra large devices (large desktops, 1200px and up) */
+@media (min-width: 75rem) {
+    body {
+        padding-left: 4rem;
+        padding-right: 4rem;
+    }
 }
 
 main {
-    height: 100%;
+    margin: 0 auto;
+    max-width: 120rem;
 }
 
-.config-container {
-    background-color: white;
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-    width: min-content;
+.top-container {
+    height: calc(min(80rem, max(50rem, 100vh - 6rem)));
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    justify-items: stretch;
 }
 
-#canvas-container {
-    position: relative;
-    overflow: clip;
-    display: block;
-    width: 100%;
-    height: 100%;
-
-    /* aspect-ratio: 1/1; */
-
-    background: repeating-linear-gradient(45deg, #ffffff, #ffffff 2.5%, #eeeeee 2.5%, #eeeeee 5%);
+.top-container hr {
+    margin: 0;
 }
 
-#display-canvas, #old-display-canvas {
-    will-change: transform;
-    /* image-rendering: pixelated; */
-    top: 0;
-    left: 0;
-    position: absolute;
-    pointer-events: none;
+.max-width-container hr {
+    margin: 2rem 0 0 0
 }
 
-#display-canvas {
-    z-index: 0;
+.max-width-container p {
+    margin: 1rem;
+    font-size: calc(1rem * var(--paragraph-font-size-multiplier));
 }
 
-#old-display-canvas {
-    z-index: 1;
+.max-width-container {
+    margin: 0 auto;
+    max-width: calc(1rem + 80ch * var(--paragraph-font-size-multiplier));
 }
 
-
-@property --inverse-waterdrop-percent {
-    syntax: "<percentage>";
-    inherits: false;
-    initial-value: 40%;
-}
-
-@keyframes inverse-waterdrop {
-
-    0% {
-        --inverse-waterdrop-percent: 40%;
-    }
-
-    100% {
-        --inverse-waterdrop-percent: 0%;
-    }
-}
-
-#canvas-loading {
-    z-index: 1;
-    position: relative;
-
-    pointer-events: none;
-
-    width: 100%;
-    height: 100%;
-
-    --percent-a: var(--inverse-waterdrop-percent);
-    --percent-b: calc(var(--percent-a) + 20%);
-    --percent-c: calc(var(--percent-b) + 20%);
-
-    background: repeating-radial-gradient(circle, #eee var(--percent-a), #9c9c9c var(--percent-b), #eee var(--percent-c));
-
-    animation: inverse-waterdrop 1s linear infinite;
-}
-
-@media screen and (orientation: landscape) {
-    #canvas-container {
-        height: 100%;
-    }
-}
-
-@media screen and (orientation: portrait) {
-    #canvas-container {
-        width: 100%;
-    }
-}
-
-
-/* General Reset for the Drop Zone */
-.drop-zone {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-
-
-    margin: 2rem auto;
-
-    padding: 2rem 0;
-    border: 2px dashed #cccccc;
-
-    border-radius: 0.5rem;
-
-    background-color: #fafafa;
-
-    color: #666666;
-
-
+hgroup, h1, h2, h3, h4, h5, h6 {
     text-align: center;
-    cursor: pointer;
-
-    transition: background-color 0.3s, border-color 0.3s;
-
 }
 
-/* Hover effect for better UX */
-.drop-zone:hover {
-    background-color: #f0f0f0;
-    border-color: #888888;
+h1 {
+    font-size: 3rem;
 }
 
-/* Highlighted state when dragging over the drop zone */
-.drop-zone.dragover {
-    background-color: #e0f7fa;
-    /* Soft color change to show drop is possible */
-    border-color: #0288d1;
-    /* Highlight border color */
-    color: #0288d1;
+h2 {
+    font-size: 2rem;
 }
 
-/* Accessibility: Focused state for keyboard users */
-.drop-zone:focus {
-    outline: none;
-    /* Remove default outline */
-    border-color: #00796b;
-    /* Highlight border for focus */
-    box-shadow: 0 0 0 4px rgba(0, 121, 107, 0.3);
-    /* Accessible focus ring */
+hr {
+    border: 1px solid var(--border-color);
 }
 
-/* Responsive design adjustments */
-/* @media (max-width: 600px) {
-    .drop-zone {
-        width: 90%;
+body:has(canvas-component-controls[fake-fullscreen]) {
+    overflow: hidden;
+}
 
-        height: 150px;
-       
-    }
-} */
+canvas-component-controls {
+    margin: 1rem;
+    flex-grow: 1;
+}
