@@ -817,7 +817,9 @@ class CanvasComponent extends HTMLElement {
         this.#resizeObserver.observe(this);
 
         // Wheel event for zooming
-        this.addEventListener("wheel", this.#handleWheel.bind(this));
+        this.addEventListener("wheel", this.#handleWheel.bind(this), {
+            passive: false,
+        });
 
         // Pointer events
         this.addEventListener(
@@ -835,9 +837,13 @@ class CanvasComponent extends HTMLElement {
         this.addEventListener("mousemove", this.#handleMouseMove.bind(this));
 
         // Touch events
-        this.addEventListener("touchstart", this.#handleTouchStart.bind(this));
+        this.addEventListener("touchstart", this.#handleTouchStart.bind(this), {
+            passive: false,
+        });
         this.addEventListener("touchend", this.#handleTouchEnd.bind(this));
-        this.addEventListener("touchmove", this.#handleTouchMove.bind(this));
+        this.addEventListener("touchmove", this.#handleTouchMove.bind(this), {
+            passive: false,
+        });
 
         // Keyboard events
         document.addEventListener("keydown", this.#handleKeyDown.bind(this));
