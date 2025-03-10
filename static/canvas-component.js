@@ -867,6 +867,8 @@ class CanvasComponent extends HTMLElement {
                 oldOffsetY,
                 oldZoom,
                 maxDetail,
+
+                imageUrl,
             } = e.data;
 
             switch (type) {
@@ -920,6 +922,12 @@ class CanvasComponent extends HTMLElement {
 
                     this.#renderWake();
                     break;
+                }
+                case "makeImageComplete": {
+                    const downloadLink = document.createElement("a");
+                    downloadLink.href = imageUrl;
+                    downloadLink.download = "image.png";
+                    downloadLink.click();
                 }
                 case "zoomViewportComplete":
                 case "moveViewportComplete":
@@ -1785,6 +1793,44 @@ class CanvasComponent extends HTMLElement {
             this.#worker.addEventListener("message", handleWorkerMessage);
             this.#worker.postMessage({
                 type: "saveOffset",
+            });
+        });
+    }
+
+    /**
+     * Saves the current image
+     * @public
+     * @param {number} resolution - The resolution to save the image with
+     * @returns {Promise<void>}
+     */
+    async saveImage(resolution) {
+        if (!resolution) {
+            resolution = 1024;
+        } else {
+            // Check if resolution is a power of 2
+            const isPowerOf2 = (num) => Math.log2(num) % 1 === 0;
+            if (!isPowerOf2(resolution)) {
+                console.warn(
+                    "Resolution must be a power of 2. Defaulting to 1024."
+                );
+                resolution = 1024;
+            }
+        }
+
+        return new Promise((resolve) => {
+            const handleWorkerMessage = (e) => {
+                if (e.data.type === "makeImageComplete") {
+                    this.#worker.removeEventListener(
+                        "message",
+                        handleWorkerMessage
+                    );
+                    resolve();
+                }
+            };
+            this.#worker.addEventListener("message", handleWorkerMessage);
+            this.#worker.postMessage({
+                type: "makeImage",
+                imageSquareSize: resolution,
             });
         });
     }

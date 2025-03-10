@@ -488,6 +488,25 @@ class CanvasComponentControls extends HTMLElement {
                                 <button id="save-offset">Save Position</button>
                             </div>
                         </div>
+                        
+                        <!-- Save Image controls -->
+                        <div class="control-group">
+                            <h3>Save Image</h3>
+                            <div class="resolution-select-container">
+                                <label for="save-image-resolution">Resolution:</label>
+                                <select id="save-image-resolution" class="resolution-select">
+                                    <option value="64">64px</option>
+                                    <option value="128">128px</option>
+                                    <option value="256">256px</option>
+                                    <option value="512">512px</option>
+                                    <option value="1024" selected>1024px</option>
+                                    <option value="2048">2048px</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button id="save-image-button">Save Image</button>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="canvas-container">
@@ -528,6 +547,7 @@ class CanvasComponentControls extends HTMLElement {
             this.handlePositionDropZoneDrop.bind(this);
         this.handleSaveOffset = this.handleSaveOffset.bind(this);
         this.handleFullscreenChange = this.handleFullscreenChange.bind(this);
+        this.handleSaveImage = this.handleSaveImage.bind(this);
 
         // Attach the event listeners once after shadow DOM is created
         this.attachEventListeners();
@@ -733,6 +753,17 @@ class CanvasComponentControls extends HTMLElement {
         });
     }
 
+    handleSaveImage() {
+        const saveImageResolution = this.shadowRoot.getElementById(
+            "save-image-resolution"
+        );
+        const resolution = parseInt(saveImageResolution.value, 10);
+
+        this.canvasComponents.forEach((component) => {
+            component.saveImage(resolution);
+        });
+    }
+
     handleFullscreenChange(event) {
         if (event.target.checked) {
             this.setAttribute("fake-fullscreen", "");
@@ -826,6 +857,12 @@ class CanvasComponentControls extends HTMLElement {
         const saveOffsetButton = shadow.getElementById("save-offset");
         if (saveOffsetButton) {
             saveOffsetButton.addEventListener("click", this.handleSaveOffset);
+        }
+
+        // Save image
+        const saveImageButton = shadow.getElementById("save-image-button");
+        if (saveImageButton) {
+            saveImageButton.addEventListener("click", this.handleSaveImage);
         }
 
         const fullscreenToggle = shadow.getElementById("fullscreen-toggle");

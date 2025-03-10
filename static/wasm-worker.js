@@ -173,6 +173,8 @@ self.onmessage = function (e) {
         mouseY,
         zoomDelta,
 
+        imageSquareSize,
+
         findImageData,
     } = e.data;
     switch (type) {
@@ -220,6 +222,9 @@ self.onmessage = function (e) {
             );
 
             const fileData = new Blob([offsetArray]);
+
+            exports.getOffsetFree();
+
             const fileUrl = URL.createObjectURL(fileData);
             self.postMessage({ type: "saveOffsetComplete", fileUrl: fileUrl });
             break;
@@ -251,6 +256,39 @@ self.onmessage = function (e) {
 
         case "renderImage": {
             exports.renderPixels();
+
+            break;
+        }
+
+        case "makeImage": {
+            const imageBytes = exports.makeImage(imageSquareSize);
+
+            // Create a blob from the RGBA image data
+            const size = imageSquareSize * imageSquareSize * 4;
+            const imageArray = new Uint8ClampedArray(
+                memory.buffer,
+                imageBytes,
+                size
+            );
+            const imageData = new ImageData(
+                imageArray,
+                imageSquareSize,
+                imageSquareSize
+            );
+            const canvas = new OffscreenCanvas(
+                imageSquareSize,
+                imageSquareSize
+            );
+            const ctx = canvas.getContext("2d");
+            ctx.putImageData(imageData, 0, 0);
+
+            // Convert the canvas to a blob and create a download URL
+            canvas.convertToBlob({ type: "image/png" }).then((blob) => {
+                const imageUrl = URL.createObjectURL(blob);
+                self.postMessage({ type: "makeImageComplete", imageUrl });
+            });
+
+            exports.freeImage(imageBytes, imageSquareSize);
 
             break;
         }

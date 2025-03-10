@@ -1282,3 +1282,52 @@ export fn getOffsetLen() usize {
 export fn getOffsetFree() void {
     allocator.free(offset_digits_packed_with_digit_offset);
 }
+
+export fn makeImage(square_size: usize) [*]render.Color {
+    std.debug.assert(std.math.isPowerOfTwo(square_size));
+
+    const image = allocator.alloc(render.Color, square_size * square_size) catch @panic("OOM");
+
+    const output_color_chunks_backing = allocator.alloc([]render.Color, square_size * 2) catch @panic("OOM");
+
+    const sub_square_size = square_size / 2;
+
+    var output_color_chunks: [4][][]render.Color = undefined;
+
+    for (&output_color_chunks, 0..) |*output_color_chunk, i| {
+        output_color_chunk.* = output_color_chunks_backing[i * sub_square_size .. (i + 1) * sub_square_size];
+    }
+
+    for (&output_color_chunks, 0..) |output_color_chunk, i| {
+        const x_offset = (i & 1) * sub_square_size;
+        const y_offset = (i >> 1) * sub_square_size;
+
+        for (0..square_size / 2) |y| {
+            const offset_x = x_offset;
+            const offset_y = y + y_offset;
+
+            const start_idx = offset_y * (square_size) + offset_x;
+
+            output_color_chunk[y] = image[start_idx .. start_idx + sub_square_size];
+        }
+    }
+
+    for (0..4) |i| {
+        digitIncrement(@intCast(i));
+
+        var iteration_state = render.FillIterationState.init(allocator, sub_square_size, state_tree.digits, state_tree.endingState() catch @panic("OOM"), output_color_chunks[i]) catch @panic("OOM");
+        defer iteration_state.deinit();
+
+        while (iteration_state.iterate(100000)) {}
+
+        digitDecrement(@intCast(i));
+    }
+
+    return image.ptr;
+}
+
+export fn freeImage(image: [*]render.Color, square_size: usize) void {
+    std.debug.assert(std.math.isPowerOfTwo(square_size));
+
+    allocator.free(image[0 .. square_size * square_size]);
+}
