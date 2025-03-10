@@ -1496,136 +1496,63 @@ pub fn encodeColorSearch(writer: DigitWriter, digit_path: []const u2, current_co
     }
 
     const target_color = colorToArr(target_color_arg);
+    var current_color = colorToArr(current_color_arg);
 
-    const current_color = colorToArr(current_color_arg);
+    for (digit_path) |target_color_digit| {
+        var target_colors_arr: [4][3]u8 = undefined;
 
-    var target_colors_arr: [4][3]u8 = undefined;
+        for (&current_color, &target_color, 0..3) |color_component, target_color_component, i| {
+            var total_color_component = @as(u16, color_component) * 4;
 
-    var color_budget: [3]usize = undefined;
-
-    for (&color_budget, &current_color) |*color_budget_component, color_component| {
-        color_budget_component.* = @as(usize, color_component) * 4;
-    }
-
-    for (0..3) |i| {
-        if (color_budget[i] < target_color[i]) {
-            target_colors_arr[0][i] = @intCast(color_budget[i]);
-        } else if ((255 * 4) - color_budget[i] < (255 - target_color[i])) {
-            target_colors_arr[0][i] = @intCast(255 - ((255 * 4) - color_budget[i]));
-        } else {
-            target_colors_arr[0][i] = target_color[i];
-        }
-        color_budget[i] -= target_colors_arr[0][i];
-    }
-
-    target_colors_arr[1..].* = @splat(@splat(0));
-
-    {
-        for (0..3) |j| {
-            const distribution = distributeValues(usize, 3, color_budget[j], @splat(255));
-            for (&distribution, 1..4) |distribution_value, i| {
-                target_colors_arr[i][j] = @intCast(distribution_value);
+            if (total_color_component < target_color_component) {
+                total_color_component = @min(target_color_component, total_color_component + 2);
             }
 
-            // var i: usize = 1;
-            // while (color_budget[j] > 0 and i < 4) : (i += 1) {
-            //     const space_left = 255 - target_colors_arr[i][j];
+            if (total_color_component > target_color_component) {
+                total_color_component -= 1;
+            }
 
-            //     const diff = @min(color_budget[j], space_left);
+            if (total_color_component <= 255 * 3 + @as(u16, target_color_component)) {
+                target_colors_arr[0][i] = @intCast(@min(total_color_component, target_color_component));
+            } else {
+                target_colors_arr[0][i] = @intCast(total_color_component - 255 * 3);
+            }
 
-            //     target_colors_arr[i][j] += diff;
+            total_color_component -= target_colors_arr[0][i];
 
-            //     color_budget[j] -= diff;
-            // }
+            const altered_color_component: u8 = @intCast(total_color_component / 3);
+            const excess = total_color_component % 3;
+
+            for (0..3) |j| {
+                target_colors_arr[j + 1][i] = altered_color_component;
+                if (j < excess) {
+                    target_colors_arr[j + 1][i] += 1;
+                }
+            }
         }
-    }
 
-    var color_modifiers: [3]usize = @splat(1);
+        const temp = target_colors_arr[0];
+        target_colors_arr[0] = target_colors_arr[target_color_digit];
+        target_colors_arr[target_color_digit] = temp;
 
-    for (0..3) |i| {
-        if (target_color[i] > target_colors_arr[0][i]) {
-            const diff = @min(target_color[i], @as(usize, target_colors_arr[0][i]) + 2);
+        var target_colors: [4]Color = undefined;
 
-            color_modifiers[0] = (diff - target_colors_arr[0][i]) + 1;
-
-            target_colors_arr[0][i] = @intCast(diff);
+        for (&target_colors, &target_colors_arr) |*current_target_color, target_color_arr| {
+            current_target_color.* = arrToColor(target_color_arr);
         }
-    }
 
-    for (0..3) |i| {
-        if (target_color[i] < target_colors_arr[0][i]) {
-            color_modifiers[0] = 0;
+        const splitters = getSplitters(arrToColor(current_color), target_colors);
+        const encoded_chunk: EncodedChunk = .{
+            .splitters = splitters,
+        };
+        const encoded_chunk_digits = encoded_chunk.toDigits();
 
-            target_colors_arr[0][i] -= 1;
+        for (&encoded_chunk_digits) |digit| {
+            try writer.write(digit);
         }
+
+        current_color = target_colors_arr[target_color_digit];
     }
-
-    // for (&current_color, &target_color, 0..3) |color_component, target_color_component, i| {
-    //     var total_color_component = @as(u16, color_component) * 4;
-
-    //     const total_orig = total_color_component;
-
-    //     if (total_color_component < target_color_component) {
-    //         total_color_component = @min(target_color_component, total_color_component + 2);
-    //     }
-
-    //     if (total_color_component > target_color_component) {
-    //         total_color_component -= 1;
-    //     }
-
-    //     if (total_color_component <= 255 * 3 + @as(u16, target_color_component)) {
-    //         target_colors_arr[0][i] = @intCast(@min(total_color_component, target_color_component));
-    //     } else {
-    //         target_colors_arr[0][i] = @intCast(total_color_component - 255 * 3);
-    //     }
-
-    //     total_color_component -= target_colors_arr[0][i];
-
-    //     const altered_color_component: u8 = @intCast(total_color_component / 3);
-    //     const excess = total_color_component % 3;
-
-    //     for (0..3) |j| {
-    //         target_colors_arr[j + 1][i] = altered_color_component;
-    //         if (j < excess) {
-    //             target_colors_arr[j + 1][i] += 1;
-    //         }
-    //     }
-
-    //     var sum: u16 = 0;
-
-    //     for (0..4) |j| {
-    //         sum += target_colors_arr[j][i];
-    //     }
-
-    //     std.debug.assert(sum >= total_orig - 1 and sum <= total_orig + 2);
-    // }
-
-    const target_color_digit = digit_path[0];
-
-    const temp = target_colors_arr[0];
-    target_colors_arr[0] = target_colors_arr[target_color_digit];
-    target_colors_arr[target_color_digit] = temp;
-
-    var target_colors: [4]Color = undefined;
-
-    for (&target_colors, &target_colors_arr) |*current_target_color, target_color_arr| {
-        current_target_color.* = arrToColor(target_color_arr);
-    }
-
-    const splitters = getSplitters(current_color_arg, target_colors);
-    const encoded_chunk: EncodedChunk = .{
-        .splitters = splitters,
-    };
-    const encoded_chunk_digits = encoded_chunk.toDigits();
-
-    for (&encoded_chunk_digits) |digit| {
-        try writer.write(digit);
-    }
-    // try writer.write(target_color_digit);
-
-    // jsPrint("pd: {any} {any} {}", .{ target_colors_arr, target_color, target_color_digit });
-
-    try encodeColorSearch(writer, digit_path[1..], target_colors[target_color_digit], target_color_arg);
 }
 
 const hash72_increment = 2534895234121;
@@ -2095,43 +2022,4 @@ fn arrToColor(arr: [3]u8) Color {
         .b = arr[2],
         .a = 255,
     };
-}
-
-fn distributeValues(comptime T: type, comptime count: comptime_int, target: T, maximums: [count]T) [count]T {
-    var x = target;
-
-    // Array of pointers to child values and their corresponding max values
-    var values: [count]T = @splat(0);
-
-    // First pass: Distribute an even amount across each child up to its max
-    const initial_share = x / count;
-    for (0..count) |i| {
-        // Give each child the initial share, but don't exceed its max value
-        if (initial_share <= maximums[i]) {
-            values[i] = @intCast(initial_share);
-            x -= initial_share;
-        } else {
-            values[i] = maximums[i];
-            x -= maximums[i];
-        }
-    }
-
-    // // Second pass: Distribute the remaining x, if any, while respecting max values
-    // var i: usize = 0;
-    // while (x > 0 and i < 4) {
-    //     const remaining_capacity = maximums[i] - values[i];
-    //     const amountToGive = if (remaining_capacity < x) remaining_capacity else x;
-    //     values[i] += (amountToGive);
-    //     x -= amountToGive;
-    //     i += 1;
-    // }
-
-    for (0..count) |i| {
-        const remaining_capacity = maximums[i] - values[i];
-        const amountToGive = if (remaining_capacity < x) remaining_capacity else x;
-        values[i] += (amountToGive);
-        x -= amountToGive;
-    }
-
-    return values;
 }
