@@ -120,7 +120,7 @@ class CanvasComponentControls extends HTMLElement {
                 
                 /* Update fullscreen selector to target container with checkbox */
                 #fullscreen-toggle:checked ~ .component-container .controls-container {
-                    height: 100vh;
+                    height: 100dvh;
                 }
                 
                 /* Menu Toggle */
