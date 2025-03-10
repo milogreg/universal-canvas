@@ -174,16 +174,6 @@ pub fn childIndices(parent_x: usize, parent_y: usize, parent_square_size: usize)
     };
 }
 
-pub fn childIndices2(parent_x: usize, parent_y: usize, parent_square_size: usize) [4]usize {
-    const parent_idx = parent_y * parent_square_size + parent_x;
-    var indices: [4]usize = undefined;
-    for (&indices, 0..) |*idx, i| {
-        idx.* = parent_idx * 4 + i;
-    }
-
-    return indices;
-}
-
 pub fn stateFromDigits(root_state: SelfConsumingReaderState, digits: DigitArray, digit_count: usize) SelfConsumingReaderState {
     var states: [2]SelfConsumingReaderState = undefined;
 
@@ -772,47 +762,6 @@ pub const StateStems = struct {
     }
 };
 
-pub const DigitArrayManaged = struct {
-    array: DigitArray,
-    digit_backers: std.ArrayList(DigitArray.Backer),
-
-    pub fn init(allocator: std.mem.Allocator, digit_count: usize) std.mem.Allocator.Error!DigitArrayManaged {
-        var res: DigitArrayManaged = undefined;
-
-        res.digit_backers = std.ArrayList(DigitArray.Backer).init(allocator);
-        try res.digit_backers.resize(DigitArray.backersNeeded(digit_count));
-
-        res.array = .{
-            .digit_backers = res.digit_backers.items,
-            .length = digit_count,
-        };
-
-        return res;
-    }
-
-    pub fn deinit(this: DigitArrayManaged) void {
-        this.digit_backers.deinit();
-    }
-
-    pub fn resize(this: *DigitArrayManaged, new_digit_count: usize) std.mem.Allocator.Error!void {
-        try this.digit_backers.resize(DigitArray.backersNeeded(new_digit_count));
-        this.array = .{
-            .digit_backers = this.digit_backers.items,
-            .length = new_digit_count,
-        };
-    }
-
-    pub fn copy(this: *DigitArrayManaged, other: DigitArray) std.mem.Allocator.Error!void {
-        try this.digit_backers.resize(other.digit_backers.len);
-        @memcpy(this.digit_backers.items, other.digit_backers);
-
-        this.array = .{
-            .digit_backers = this.digit_backers.items,
-            .length = other.length,
-        };
-    }
-};
-
 pub const VirtualDigitArray = struct {
     array: DigitArray,
     virtual_idx: usize,
@@ -1109,168 +1058,6 @@ fn readDigitsToBytes(
     // }
 
     // std.debug.assert(std.mem.eql(u8, &starting_bytes, bytes));
-}
-
-pub fn getArrayFromDigits(
-    digit_array: anytype,
-    comptime length: usize,
-    comptime T: type,
-    idx: *usize,
-    position_start: usize,
-    digit_count: usize,
-) [length]T {
-    const t_bits = @typeInfo(T).int.bits;
-
-    if (t_bits % DigitArray.digit_bits == 0) {
-        return getArrayFromDigitsAligned(digit_array, length, T, idx, position_start, digit_count);
-    }
-
-    return getArrayFromDigitsMisaligned(digit_array, length, T, idx, position_start, digit_count);
-}
-
-fn getArrayFromDigitsAligned(
-    digit_array: anytype,
-    comptime length: usize,
-    comptime T: type,
-    idx: *usize,
-    position_start: usize,
-    digit_count: usize,
-) [length]T {
-    const t_bits = @typeInfo(T).int.bits;
-
-    var res: [length]T = @splat(0);
-
-    const digits_per_t = @divExact(t_bits, DigitArray.digit_bits);
-
-    var digit_idx: usize = idx.*;
-    defer idx.* = digit_idx;
-
-    for (&res) |*res_val| {
-        for (0..digits_per_t) |i| {
-            const digit = digit_array.get(digit_idx);
-
-            if (digit_idx < digit_count - 1) {
-                digit_idx += 1;
-            } else {
-                digit_idx = position_start;
-            }
-
-            res_val.* |= @as(T, digit) << @intCast(i * DigitArray.digit_bits);
-        }
-    }
-
-    return res;
-}
-
-fn getArrayFromDigitsMisaligned(
-    digit_array: anytype,
-    comptime length: usize,
-    comptime T: type,
-    idx: *usize,
-    position_start: usize,
-    digit_count: usize,
-) [length]T {
-    const t_bits = @typeInfo(T).int.bits;
-
-    const res_bits = t_bits * length;
-
-    var res: [length]T = @splat(0);
-
-    const digits_in_res = comptime std.math.divCeil(usize, res_bits, DigitArray.digit_bits) catch unreachable;
-
-    var digit_idx = idx.*;
-    defer idx.* = digit_idx;
-
-    outer: for (0..digits_in_res) |i| {
-        const digit = digit_array.get(digit_idx);
-
-        if (digit_idx < digit_count - 1) {
-            digit_idx += 1;
-        } else {
-            digit_idx = position_start;
-        }
-
-        for (0..DigitArray.digit_bits) |digit_bit_idx| {
-            const res_bit_idx = i * DigitArray.digit_bits + digit_bit_idx;
-
-            const res_idx = res_bit_idx / t_bits;
-            if (res_idx >= res.len) {
-                break :outer;
-            }
-
-            const res_bit_offset = res_bit_idx % t_bits;
-
-            const digit_bit: u1 = @intCast((digit >> @intCast(digit_bit_idx)) & 1);
-
-            res[res_idx] |= @as(T, digit_bit) << @intCast(res_bit_offset);
-        }
-    }
-
-    return res;
-}
-
-// Same as clampWrap(val + 1, max), but
-// val must be less than max.
-fn clampWrapIncrement(val: anytype, max: anytype) @TypeOf(val) {
-    std.debug.assert(val < max);
-
-    return if (val == max - 1) 0 else val + 1;
-}
-
-fn lcgInRange(seed: u32, max: u32) u32 {
-    var res: u64 = lcg32(seed);
-    res *= max - 1;
-    res >>= 32;
-    return @intCast(res);
-
-    // var x = seed;
-
-    // var bitmask: u32 = 1;
-    // while (bitmask < max) {
-    //     bitmask = (bitmask << 1) | 1; // Create a mask for the nearest power of two.
-    // }
-
-    // while (true) {
-    //     x = xorshift32(x);
-    //     const result = x & bitmask;
-
-    //     if (result < max) {
-    //         return result;
-    //     }
-    // }
-
-    // return seed % max;
-
-    // if (max == 1) {
-    //     return 0;
-    // }
-
-    // var res = seed;
-
-    // res >>= @intCast(@clz(max) + 1);
-
-    // return res;
-}
-
-fn clampWrap(val: anytype, max: anytype) @TypeOf(val) {
-
-    // if (true) return val % max;
-
-    // std.debug.assert(val < max * 2);
-
-    if (val >= max) {
-        return 0;
-
-        // return val & ((@as(@TypeOf(max), 1) << std.math.log2_int(@TypeOf(max), max)) - 1);
-
-        // const jumbled = lcg32(val);
-        // return @intCast((@as(u64, jumbled) * @as(u64, max - 1)) >> 32);
-
-        // return val - max;
-        // return val % max;
-    } else {
-        return val;
-    }
 }
 
 const EncodedChunk = struct {
@@ -1651,14 +1438,6 @@ fn averageColors(allocator: std.mem.Allocator, colors: []const Color) ![]Color {
     return averaged;
 }
 
-fn splitterFromDigits(digits: [4]u2) usize {
-    var splitter: usize = 0;
-    for (&digits, 0..) |digit, i| {
-        splitter |= @as(usize, digit) << @intCast(((i) * 2));
-    }
-    return splitter;
-}
-
 const SumColor = struct {
     r: u32,
     g: u32,
@@ -1847,14 +1626,6 @@ pub fn encodeColorSearch(writer: DigitWriter, digit_path: []const u2, current_co
     // jsPrint("pd: {any} {any} {}", .{ target_colors_arr, target_color, target_color_digit });
 
     try encodeColorSearch(writer, digit_path[1..], target_colors[target_color_digit], target_color_arg);
-}
-
-fn hash32(x: u32) u32 {
-    return x *% 1664525;
-}
-
-fn hash32Inverse(x: u32) u32 {
-    return x *% 4276115653;
 }
 
 const hash72_increment = 2534895234121;
@@ -2307,99 +2078,6 @@ fn getSplitters(parent_color: Color, child_colors: [4]Color) [10]u8 {
     std.debug.assert(std.mem.eql([3]u8, &child_colors_arr, &tester));
 
     return splitters;
-}
-
-fn scaleToRange(num: anytype, initial_range: anytype, target_range: anytype) @TypeOf(num) {
-    if (initial_range > target_range) {
-        const min_slots_per_value = initial_range / target_range;
-        const extra_slots = initial_range % target_range;
-
-        const slots_without_extra = target_range - extra_slots;
-
-        if (num / min_slots_per_value < slots_without_extra) {
-            return @intCast(num / min_slots_per_value);
-        }
-
-        return @intCast(slots_without_extra / min_slots_per_value + ((num / min_slots_per_value) - slots_without_extra) / (min_slots_per_value + 1));
-    }
-
-    const min_slots_per_value = target_range / initial_range;
-    const extra_slots = target_range % initial_range;
-
-    const slots_without_extra = initial_range - extra_slots;
-
-    if (num < slots_without_extra) {
-        return @intCast(num * min_slots_per_value);
-    }
-
-    return @intCast(slots_without_extra * min_slots_per_value + (num - slots_without_extra) * (min_slots_per_value + 1));
-}
-
-fn xorshift32(x: u32) u32 {
-    var res = x;
-    res ^= res << 13;
-    res ^= res >> 17;
-    res ^= res << 5;
-    return res;
-}
-
-fn lcg32(x: u32) u32 {
-    var res = x;
-    // res *%= 134775813;
-    // res +%= 1;
-
-    res *%= 1664525;
-    res +%= 1013904223;
-
-    return res;
-}
-
-fn lcg32Inverse(x: u32) u32 {
-    var res = x;
-
-    res -%= 1013904223;
-    res *%= 4276115653;
-
-    return res;
-}
-
-fn lcg32Vec(x: anytype) @Vector(@typeInfo(@TypeOf(x)).vector.len, u32) {
-    var res: @Vector(@typeInfo(@TypeOf(x)).vector.len, u32) = x;
-
-    res *%= @splat(1664525);
-    res +%= @splat(1013904223);
-
-    return res;
-}
-
-// This is GPT code and isn't actually a proper inverse of reverseHash64.
-fn hash64(key_arg: u64) u64 {
-    var key = key_arg;
-
-    // Reversible operations to mix the bits
-    key = (~key) +% (key << 21); // key = (key * 2^21) + ~key
-    key = key ^ (key >> 24);
-    key = (key +% (key << 3)) +% (key << 8); // key * 265
-    key = key ^ (key >> 14);
-    key = (key +% (key << 2)) +% (key << 4); // key * 21
-    key = key ^ (key >> 28);
-    key = key +% (key << 31);
-    return key;
-}
-
-// This is GPT code and isn't actually a proper inverse of hash64.
-fn reverseHash64(hashed_key_arg: u64) u64 {
-    var hashed_key = hashed_key_arg;
-
-    // Inverse of each operation, reversed order
-    hashed_key = hashed_key -% (hashed_key << 31);
-    hashed_key = hashed_key ^ (hashed_key >> 28);
-    hashed_key = (hashed_key -% (hashed_key << 2)) -% (hashed_key << 4);
-    hashed_key = hashed_key ^ (hashed_key >> 14);
-    hashed_key = (hashed_key -% (hashed_key << 3)) -% (hashed_key << 8);
-    hashed_key = hashed_key ^ (hashed_key >> 24);
-    hashed_key = (~hashed_key) -% (hashed_key << 21);
-    return hashed_key;
 }
 
 fn colorToArr(color: Color) [3]u8 {
