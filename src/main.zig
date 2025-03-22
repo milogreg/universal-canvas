@@ -10,9 +10,6 @@ const js = struct {
         pixels: [*]render.Color,
         width: usize,
         height: usize,
-        old_pixels: [*]render.Color,
-        old_width: usize,
-        old_height: usize,
     ) void;
 
     extern fn imageBitmapFilled() bool;
@@ -21,11 +18,13 @@ const js = struct {
         offset_x: f64,
         offset_y: f64,
         zoom: f64,
-        old_offset_x: f64,
-        old_offset_y: f64,
-        old_zoom: f64,
+        clip_x: f64,
+        clip_y: f64,
+        clip_width: f64,
+        clip_height: f64,
         updated_pixels: bool,
         max_detail: bool,
+        version: u64,
     ) void;
 };
 
@@ -58,19 +57,14 @@ fn jsPrint(comptime fmt: []const u8, args: anytype) void {
     js.printString(to_print.ptr, to_print.len);
 }
 
-var offset_initial_states: [4]?render.SelfConsumingReaderState = @splat(null);
-
 var state_tree: render.StateStems = undefined;
 
 var iteration_states: [4]?render.FillIterationState = @splat(null);
 
-const max_square_size = 2048;
+const iteration_rate = 1000000;
+// const iteration_rate = 300;
 
-// const iteration_rate = 1000000;
-const iteration_rate = 300;
-
-var state_iteration_count: usize = 0;
-var iteration_done: bool = false;
+var state_iteration_count: usize = 1;
 
 // const root_color: render.Color = .{
 //     .r = 50,
@@ -88,43 +82,25 @@ const root_color: render.Color = .{
 
 var parent_pixels_buf: []render.Color = &.{};
 var parent_pixels: []render.Color = &.{};
-var parent_square_size: usize = 0;
+
+var parent_pixels_width: usize = 0;
+var parent_pixels_height: usize = 0;
 
 var display_pixels_buf: []render.Color = &.{};
 var display_pixels: []render.Color = &.{};
-var display_square_size: usize = 0;
-
-var old_display_pixels_buf: []render.Color = &.{};
-var old_display_pixels: []render.Color = &.{};
-var old_display_square_size: usize = 0;
 
 var updated_pixels = false;
-var position_dirty = true;
+var position_dirty = false;
 var filled_pixels = false;
 
-var display_client: ClientPosition = .{
-    .zoom = 1,
-    .offset_x = 0,
-    .offset_y = 0,
-    .canvas_width = 1,
-    .canvas_height = 1,
-    .at_min_border_x = false,
-    .at_min_border_y = false,
-    .at_max_border_x = false,
-    .at_max_border_y = false,
-};
+var pixel_ratio: f64 = 1;
 
-var old_display_client: ClientPosition = .{
-    .zoom = 1,
-    .offset_x = 0,
-    .offset_y = 0,
-    .canvas_width = 1,
-    .canvas_height = 1,
-    .at_min_border_x = false,
-    .at_min_border_y = false,
-    .at_max_border_x = false,
-    .at_max_border_y = false,
-};
+const base_zoom_multiplier = 1;
+
+var pixels_clean_region: [2][2]usize = undefined;
+var pixels_offsets: ?[2]isize = null;
+
+var backup_client_version: u64 = 0;
 
 var backup_client: ClientPosition = .{
     .zoom = 1,
@@ -132,10 +108,22 @@ var backup_client: ClientPosition = .{
     .offset_y = 0,
     .canvas_width = 1,
     .canvas_height = 1,
-    .at_min_border_x = false,
-    .at_min_border_y = false,
-    .at_max_border_x = false,
-    .at_max_border_y = false,
+};
+
+var initial_display_client: ClientPosition = .{
+    .zoom = 1,
+    .offset_x = 0,
+    .offset_y = 0,
+    .canvas_width = 1,
+    .canvas_height = 1,
+};
+
+var display_client: ClientPosition = .{
+    .zoom = 1,
+    .offset_x = 0,
+    .offset_y = 0,
+    .canvas_width = 1,
+    .canvas_height = 1,
 };
 
 const ClientPosition = struct {
@@ -146,198 +134,26 @@ const ClientPosition = struct {
     canvas_width: usize,
     canvas_height: usize,
 
-    at_min_border_x: bool,
-    at_min_border_y: bool,
-    at_max_border_x: bool,
-    at_max_border_y: bool,
-
     pub fn updatePosition(this: *ClientPosition, mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
         this.zoom *= zoom_delta;
         this.offset_x = mouse_x - (mouse_x - this.offset_x) * zoom_delta;
         this.offset_y = mouse_y - (mouse_y - this.offset_y) * zoom_delta;
     }
 
-    pub fn move(this: *ClientPosition, offset_x: f64, offset_y: f64) void {
-        this.offset_x += offset_x;
-        this.offset_y += offset_y;
+    pub fn movePixels(this: *ClientPosition, offset_x: isize, offset_y: isize, units_per_pixel: f64) void {
+        this.offset_x += @as(f64, @floatFromInt(offset_x)) * units_per_pixel * this.zoom;
+        this.offset_y += @as(f64, @floatFromInt(offset_y)) * units_per_pixel * this.zoom;
     }
 
-    pub fn clampToViewport(this: *ClientPosition) void {
-        if (this.zoom < 1) {
-            this.zoom = 1;
-        }
-
-        const maxOffsetX = 0;
-        const maxOffsetY = 0;
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * this.zoom + @as(f64, @floatFromInt(this.canvas_width));
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * this.zoom + @as(f64, @floatFromInt(this.canvas_height));
-
-        this.offset_x = @max(this.offset_x, min_offset_x);
-        this.offset_x = @min(this.offset_x, maxOffsetX);
-
-        this.offset_y = @max(this.offset_y, min_offset_y);
-        this.offset_y = @min(this.offset_y, maxOffsetY);
-    }
-
-    pub fn areaInViewport(this: ClientPosition) f64 {
-        const maxOffsetX = 0;
-        const maxOffsetY = 0;
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * this.zoom + @as(f64, @floatFromInt(this.canvas_width));
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * this.zoom + @as(f64, @floatFromInt(this.canvas_height));
-
-        const x_not_in_viewport = @max(this.offset_x - maxOffsetX, 0) + @max(min_offset_x - this.offset_x, 0);
-
-        const y_not_in_viewport = @max(this.offset_y - maxOffsetY, 0) + @max(min_offset_y - this.offset_y, 0);
-
-        return @max(0, ((@as(f64, @floatFromInt(this.canvas_width)) - x_not_in_viewport))) * @max(0, (@as(f64, @floatFromInt(this.canvas_height)) - y_not_in_viewport));
-    }
-
-    pub fn areaInViewportRatio(this: ClientPosition) f64 {
-        return this.areaInViewport() / (@as(f64, @floatFromInt(this.canvas_width)) * @as(f64, @floatFromInt(this.canvas_height)));
-    }
-
-    pub fn testUpdatePosition(this_arg: ClientPosition, mouse_x: f64, mouse_y: f64, zoom_delta: f64) bool {
-        var this = this_arg;
-
-        this.zoom *= zoom_delta;
-
-        if (this.zoom < 1) {
-            return false;
-        }
-
-        const maxOffsetX = 0;
-        const maxOffsetY = 0;
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * this.zoom + @as(f64, @floatFromInt(this.canvas_width));
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * this.zoom + @as(f64, @floatFromInt(this.canvas_height));
-
-        this.offset_x = mouse_x - (mouse_x - this.offset_x) * zoom_delta;
-
-        this.offset_y = mouse_y - (mouse_y - this.offset_y) * zoom_delta;
-
-        // return !(this.offset_x > maxOffsetX or this.offset_y > maxOffsetY or this.offset_x < minOffsetX or this.offset_y < minOffsetY);
-        return !((!this.at_max_border_x and this.offset_x > maxOffsetX) or
-            (!this.at_max_border_y and this.offset_y > maxOffsetY) or
-            (!this.at_min_border_x and this.offset_x < min_offset_x) or
-            (!this.at_min_border_y and this.offset_y < min_offset_y));
-    }
-
-    pub fn testUpdatePosition2(this_arg: ClientPosition, mouse_x: f64, mouse_y: f64, zoom_delta: f64) bool {
-        var this = this_arg;
-
-        this.zoom *= zoom_delta;
-
-        if (this.zoom < 1) {
-            return false;
-        }
-
-        const maxOffsetX = 0;
-        const maxOffsetY = 0;
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * this.zoom + @as(f64, @floatFromInt(this.canvas_width));
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * this.zoom + @as(f64, @floatFromInt(this.canvas_height));
-
-        this.offset_x = mouse_x - (mouse_x - this.offset_x) * zoom_delta;
-
-        this.offset_y = mouse_y - (mouse_y - this.offset_y) * zoom_delta;
-
-        return !(this.offset_x > maxOffsetX or this.offset_y > maxOffsetY or this.offset_x < min_offset_x or this.offset_y < min_offset_y);
-        // return !((!this.at_max_border_x and this.offset_x > maxOffsetX) or
-        //     (!this.at_max_border_y and this.offset_y > maxOffsetY) or
-        //     (!this.at_min_border_x and this.offset_x < minOffsetX) or
-        //     (!this.at_min_border_y and this.offset_y < minOffsetY));
-    }
-
-    pub fn updateDimensions(this: *ClientPosition, canvas_width: usize, canvas_height: usize) void {
-        if (this.canvas_width == canvas_width and this.canvas_height == canvas_height) {
-            return;
-        }
-
-        this.offset_x /= @as(f64, @floatFromInt(this.canvas_width));
-        this.offset_y /= @as(f64, @floatFromInt(this.canvas_height));
-
-        this.canvas_width = canvas_width;
-        this.canvas_height = canvas_height;
-
-        this.offset_x *= @as(f64, @floatFromInt(this.canvas_width));
-        this.offset_y *= @as(f64, @floatFromInt(this.canvas_height));
-    }
-
-    pub fn inBounds(this: ClientPosition) bool {
-        const max_offset_x = 0;
-        const max_offset_y = 0;
-
-        const min_offset_x = -@as(f64, @floatFromInt(this.canvas_width)) * (this.zoom - 1);
-        const min_offset_y = -@as(f64, @floatFromInt(this.canvas_height)) * (this.zoom - 1);
-
-        // return !(this.offset_x > max_offset_x or this.offset_y > max_offset_y or this.offset_x < min_offset_x or this.offset_y < min_offset_y);
-        return !((!this.at_max_border_x and this.offset_x > max_offset_x) or
-            (!this.at_max_border_y and this.offset_y > max_offset_y) or
-            (!this.at_min_border_x and this.offset_x < min_offset_x) or
-            (!this.at_min_border_y and this.offset_y < min_offset_y));
-    }
-
-    pub fn minOffsetX(this: ClientPosition) f64 {
-        return -@as(f64, @floatFromInt(this.canvas_width)) * (this.zoom - 1);
-    }
-
-    pub fn minOffsetY(this: ClientPosition) f64 {
-        return -@as(f64, @floatFromInt(this.canvas_height)) * (this.zoom - 1);
-    }
-
-    pub fn removeDigit(this: *ClientPosition, digit: u2) void {
+    pub fn removeDigit(this: *ClientPosition, digit: u2, units_per_pixel: f64) void {
         this.zoom *= 2;
-        if (digit & 1 == 1) {
-            this.offset_x -= @as(f64, @floatFromInt(this.canvas_width)) * 0.25 * this.zoom;
-        }
 
-        if (digit >> 1 == 1) {
-            this.offset_y -= @as(f64, @floatFromInt(this.canvas_height)) * 0.25 * this.zoom;
-        }
-    }
+        const move_x: isize = @intCast(digit & 1);
+        const move_y: isize = @intCast(digit >> 1);
 
-    pub fn appendDigit(this: *ClientPosition, digit: u2) void {
-        this.zoom /= 2;
-
-        if (digit & 1 == 1) {
-            this.offset_x += @as(f64, @floatFromInt(this.canvas_width)) * 0.5 * this.zoom;
-        }
-
-        if (digit >> 1 == 1) {
-            this.offset_y += @as(f64, @floatFromInt(this.canvas_height)) * 0.5 * this.zoom;
-        }
-    }
-
-    pub fn digitDecrement(this: *ClientPosition, digit: u2) void {
-        if (digit & 1 == 1) {
-            this.offset_x -= @as(f64, @floatFromInt(this.canvas_width)) * 0.5 * this.zoom;
-        }
-
-        if (digit >> 1 == 1) {
-            this.offset_y -= @as(f64, @floatFromInt(this.canvas_height)) * 0.5 * this.zoom;
-        }
-    }
-
-    pub fn digitIncrement(this: *ClientPosition, digit: u2) void {
-        if (digit & 1 == 1) {
-            this.offset_x += @as(f64, @floatFromInt(this.canvas_width)) * 0.5 * this.zoom;
-        }
-
-        if (digit >> 1 == 1) {
-            this.offset_y += @as(f64, @floatFromInt(this.canvas_height)) * 0.5 * this.zoom;
-        }
+        this.movePixels(-move_x, -move_y, units_per_pixel);
     }
 };
-
-fn appendDigit(digit: u2) void {
-    state_tree.appendDigit(digit) catch @panic("OOM");
-}
-
-fn removeDigit() void {
-    state_tree.removeDigit();
-}
 
 fn digitIncrement(digit: u2) void {
     if (digit & 1 == 1) {
@@ -346,16 +162,6 @@ fn digitIncrement(digit: u2) void {
     if (digit >> 1 == 1) {
         state_tree.incrementY();
     }
-}
-
-fn digitIncrementAndAppend(increment_digit: u2, append_digit: u2) void {
-    digitIncrement(increment_digit);
-    appendDigit(append_digit);
-}
-
-fn removeDigitAndDecrement(decrement_digit: u2) void {
-    removeDigit();
-    digitDecrement(decrement_digit);
 }
 
 fn digitDecrement(digit: u2) void {
@@ -372,78 +178,286 @@ var wait_until_backup = true;
 var has_max_detail = false;
 
 export fn renderPixels() void {
-    js.renderImage(
-        display_client.offset_x,
-        display_client.offset_y,
-        display_client.zoom,
+    const repeat = !(backup_client.offset_x == display_client.offset_x and
+        backup_client.offset_y == display_client.offset_y and
+        backup_client.zoom == display_client.zoom and
+        backup_client.canvas_width == display_client.canvas_width and
+        backup_client.canvas_height == display_client.canvas_height);
 
-        old_display_client.offset_x,
-        old_display_client.offset_y,
-        old_display_client.zoom,
+    const position_mutation = diffPositionMutation(initial_display_client, display_client);
+
+    backup_client = applyPositionMutation(backup_client, position_mutation);
+
+    // const width_diff = @as(f64, @floatFromInt(display_client.canvas_width)) - @as(f64, @floatFromInt(backup_client.canvas_width));
+    // const height_diff = @as(f64, @floatFromInt(display_client.canvas_height)) - @as(f64, @floatFromInt(backup_client.canvas_height));
+
+    // backup_client.offset_x += (width_diff * backup_client.zoom) / 2;
+    // backup_client.offset_y += (height_diff * backup_client.zoom) / 2;
+
+    backup_client_version &= ~(@as(u64, 1));
+
+    backup_client_version |= @intFromBool(repeat);
+
+    // jsPrint("repeat: {}", .{repeat});
+
+    js.renderImage(
+        backup_client.offset_x,
+        backup_client.offset_y,
+        backup_client.zoom,
+
+        @floatFromInt(pixels_clean_region[0][0]),
+        @floatFromInt(pixels_clean_region[0][1]),
+
+        @floatFromInt(pixels_clean_region[1][0] - pixels_clean_region[0][0]),
+        @floatFromInt(pixels_clean_region[1][1] - pixels_clean_region[0][1]),
 
         updated_pixels and !wait_until_backup,
         has_max_detail,
+        backup_client_version,
     );
+
+    // backup_client_version |= @intFromBool(position_dirty);
+
+    // jsPrint("position_dirty: {}", .{position_dirty});
 
     updated_pixels = false;
 }
 
-export fn zoomViewport(mouse_x: f64, mouse_y: f64, zoom_delta: f64) void {
-    position_dirty = true;
+export fn updatePosition(offset_x: f64, offset_y: f64, zoom: f64, viewport_width: f64, viewport_height: f64, version: u64) void {
+    display_client = .{
+        .canvas_width = @intFromFloat(viewport_width),
+        .canvas_height = @intFromFloat(viewport_height),
+        .offset_x = offset_x,
+        .offset_y = offset_y,
+        .zoom = zoom,
+    };
 
-    old_display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
-    display_client.updatePosition(mouse_x, mouse_y, zoom_delta);
-    backup_client.updatePosition(mouse_x, mouse_y, zoom_delta);
+    if (version == backup_client_version) {
+        position_dirty = true;
+
+        backup_client = display_client;
+
+        initial_display_client = display_client;
+
+        parent_pixels_width = @intFromFloat(@as(f64, @floatFromInt(display_client.canvas_width)) / pixel_ratio);
+        parent_pixels_height = @intFromFloat(@as(f64, @floatFromInt(display_client.canvas_height)) / pixel_ratio);
+
+        backup_client_version &= ~@as(u64, 1);
+
+        backup_client_version += 2;
+    }
 }
 
-export fn moveViewport(offset_x: f64, offset_y: f64) void {
-    position_dirty = true;
-
-    old_display_client.move(offset_x, offset_y);
-    display_client.move(offset_x, offset_y);
-    backup_client.move(offset_x, offset_y);
-}
-
-export fn resizeViewport(canvas_width: usize, canvas_height: usize) void {
-    std.debug.assert(canvas_width > 0 and canvas_height > 0);
+export fn resetPosition(viewport_width: f64, viewport_height: f64) void {
+    state_iteration_count = 0;
 
     position_dirty = true;
 
-    old_display_client.updateDimensions(canvas_width, canvas_height);
-    display_client.updateDimensions(canvas_width, canvas_height);
-    backup_client.updateDimensions(canvas_width, canvas_height);
+    wait_until_backup = true;
+
+    filled_pixels = false;
+
+    pixels_offsets = null;
+
+    backup_client.canvas_width = @intFromFloat(viewport_width);
+    backup_client.canvas_height = @intFromFloat(viewport_height);
+
+    parent_pixels_width = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_width)) / pixel_ratio);
+    parent_pixels_height = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_height)) / pixel_ratio);
+
+    backup_client.offset_x = (@as(f64, @floatFromInt(backup_client.canvas_width)) -
+        @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
+    backup_client.offset_y = (@as(f64, @floatFromInt(backup_client.canvas_height)) -
+        @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
+    backup_client.zoom = 1;
+
+    state_tree.clearDigits();
+
+    for (0..std.math.log2_int_ceil(usize, @max(4, @min(parent_pixels_width, parent_pixels_height))) - 1) |_| {
+        state_tree.appendDigit(0) catch @panic("OOM");
+    }
 }
 
 fn printDigits() void {
     const num_to_print = 10;
 
-    for (0..4) |quadrant| {
-        const digits = state_tree.quadrant_digits[quadrant];
+    const digits = state_tree.digits;
 
-        var list1 = std.ArrayList(u2).init(allocator);
-        defer list1.deinit();
+    var list1 = std.ArrayList(u2).init(allocator);
+    defer list1.deinit();
 
-        for (0..@min(num_to_print, digits.length)) |i| {
-            const digit = digits.get(i);
+    for (0..@min(num_to_print, digits.length)) |i| {
+        const digit = digits.get(i);
 
-            list1.append(digit) catch @panic("OOM");
-        }
-
-        var list2 = std.ArrayList(u2).init(allocator);
-        defer list2.deinit();
-
-        for (digits.length -| num_to_print..digits.length) |i| {
-            const digit = digits.get(i);
-
-            list2.append(digit) catch @panic("OOM");
-        }
-
-        jsPrint("digits {}: {any} ... {any}", .{ quadrant, list1.items, list2.items });
+        list1.append(digit) catch @panic("OOM");
     }
+
+    var list2 = std.ArrayList(u2).init(allocator);
+    defer list2.deinit();
+
+    for (digits.length -| num_to_print..digits.length) |i| {
+        const digit = digits.get(i);
+
+        list2.append(digit) catch @panic("OOM");
+    }
+
+    jsPrint("digits: {any} ... {any}", .{ list1.items, list2.items });
 }
 
-// { 0, 0, 1, 3, 3, 0, 2, 0, 2, 3 } ... { 2, 1, 0, 2, 1, 0, 2, 1, 0, 0 }
-// { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 } ... { 2, 1, 0, 2, 1, 0, 2, 1, 0, 0 }
+const PositionMutation = struct {
+    offset_x: f64,
+    offset_y: f64,
+    zoom: f64,
+};
+
+fn diffPositionMutation(start: ClientPosition, end: ClientPosition) PositionMutation {
+    const zoom = end.zoom / start.zoom;
+
+    return .{
+        .offset_x = end.offset_x - start.offset_x * zoom,
+        .offset_y = end.offset_y - start.offset_y * zoom,
+        .zoom = zoom,
+    };
+}
+
+fn applyPositionMutation(position: ClientPosition, mutation: PositionMutation) ClientPosition {
+    return .{
+        .offset_x = position.offset_x * mutation.zoom + mutation.offset_x,
+        .offset_y = position.offset_y * mutation.zoom + mutation.offset_y,
+        .zoom = position.zoom * mutation.zoom,
+        .canvas_width = position.canvas_width,
+        .canvas_height = position.canvas_height,
+    };
+}
+
+fn digitPositionMutation(position: ClientPosition) PositionMutation {
+    var position_updated = position;
+
+    for (1..state_tree.digits.length) |i| {
+        if (position_updated.zoom >= 1 * base_zoom_multiplier) {
+            break;
+        }
+
+        const idx = state_tree.digits.length - i;
+
+        const last_digit = state_tree.digits.get(idx);
+
+        const move_x_pixels: f64 = @floatFromInt(last_digit & 1);
+        const move_y_pixels: f64 = @floatFromInt(last_digit >> 1);
+
+        const move_x = move_x_pixels;
+        const move_y = move_y_pixels;
+
+        position_updated.zoom *= 2;
+
+        position_updated.offset_x += move_x * position_updated.zoom * pixel_ratio;
+        position_updated.offset_y += move_y * position_updated.zoom * pixel_ratio;
+    }
+
+    while (position_updated.zoom >= 2 * base_zoom_multiplier) {
+        position_updated.zoom /= 2;
+    }
+
+    {
+        var move_x: isize = 0;
+        var move_y: isize = 0;
+
+        const base_offset_x = @max(0.0, @as(f64, @floatFromInt(position_updated.canvas_width)) * base_zoom_multiplier - @as(f64, @floatFromInt(position_updated.canvas_width))) / 2.0;
+
+        const adjusted_offset_x: isize = @intFromFloat(@round((-(position_updated.offset_x + base_offset_x) / position_updated.zoom) / pixel_ratio));
+
+        if (adjusted_offset_x > 0) {
+            const to_add = @abs(adjusted_offset_x);
+
+            move_x = @as(isize, @intCast(to_add));
+        } else if (adjusted_offset_x < 0) {
+            const to_subtract = @abs(adjusted_offset_x);
+
+            move_x = -@as(isize, @intCast(to_subtract));
+        }
+
+        const base_offset_y = @max(0.0, @as(f64, @floatFromInt(position_updated.canvas_height)) * base_zoom_multiplier - @as(f64, @floatFromInt(position_updated.canvas_height))) / 2.0;
+
+        const adjusted_offset_y: isize = @intFromFloat(@round((-(position_updated.offset_y + base_offset_y) / position_updated.zoom) / pixel_ratio));
+
+        if (adjusted_offset_y > 0) {
+            const to_add = @abs(adjusted_offset_y);
+
+            move_y = @as(isize, @intCast(to_add));
+        } else if (adjusted_offset_y < 0) {
+            const to_subtract = @abs(adjusted_offset_y);
+
+            move_y = -@as(isize, @intCast(to_subtract));
+        }
+
+        position_updated.offset_x += @as(f64, @floatFromInt(move_x)) * position_updated.zoom * pixel_ratio;
+        position_updated.offset_y += @as(f64, @floatFromInt(move_y)) * position_updated.zoom * pixel_ratio;
+    }
+
+    var initial_res: PositionMutation = .{
+        .offset_x = @round((position_updated.offset_x - position.offset_x) / (pixel_ratio * position.zoom)),
+        .offset_y = @round((position_updated.offset_y - position.offset_y) / (pixel_ratio * position.zoom)),
+        .zoom = position_updated.zoom / position.zoom,
+    };
+
+    initial_res.offset_x = @min(initial_res.offset_x, @as(f64, @floatFromInt(state_tree.diffToMaxX())));
+    initial_res.offset_y = @min(initial_res.offset_y, @as(f64, @floatFromInt(state_tree.diffToMaxY())));
+
+    initial_res.offset_x = @max(initial_res.offset_x, -@as(f64, @floatFromInt(state_tree.diffToMinX())));
+    initial_res.offset_y = @max(initial_res.offset_y, -@as(f64, @floatFromInt(state_tree.diffToMinY())));
+
+    position_updated = .{
+        .offset_x = position.offset_x + position.zoom * initial_res.offset_x * pixel_ratio,
+        .offset_y = position.offset_y + position.zoom * initial_res.offset_y * pixel_ratio,
+        .zoom = position.zoom * initial_res.zoom,
+        .canvas_width = position.canvas_width,
+        .canvas_height = position.canvas_height,
+    };
+
+    return diffPositionMutation(position, position_updated);
+}
+
+fn applyDigitPositionMutation(position: ClientPosition, position_mutation_init: PositionMutation) void {
+    const mutated_position = applyPositionMutation(position, position_mutation_init);
+
+    const digits_move_x: isize = @intFromFloat(@round((mutated_position.offset_x - position.offset_x) / (pixel_ratio * position.zoom)));
+    const digits_move_y: isize = @intFromFloat(@round((mutated_position.offset_y - position.offset_y) / (pixel_ratio * position.zoom)));
+
+    if (digits_move_x > 0) {
+        state_tree.addX(@intCast(digits_move_x));
+    } else {
+        state_tree.subtractX(@intCast(-digits_move_x));
+    }
+
+    if (digits_move_y > 0) {
+        state_tree.addY(@intCast(digits_move_y));
+    } else {
+        state_tree.subtractY(@intCast(-digits_move_y));
+    }
+
+    const add_or_remove_count_float = @round(std.math.log2(mutated_position.zoom / position.zoom));
+
+    if (std.math.isFinite(add_or_remove_count_float)) {
+        const add_or_remove_count: isize = @intFromFloat(add_or_remove_count_float);
+        if (add_or_remove_count != 0) {
+            pixels_offsets = null;
+            if (add_or_remove_count > 0) {
+                for (0..@intCast(add_or_remove_count)) |_| {
+                    state_tree.removeDigit();
+                }
+            } else {
+                for (0..@intCast(-add_or_remove_count)) |_| {
+                    state_tree.appendDigit(0) catch @panic("OOM");
+                }
+            }
+        }
+    }
+
+    if (pixels_offsets) |*pixels_offsets_unwrapped| {
+        pixels_offsets_unwrapped[0] -= digits_move_x;
+        pixels_offsets_unwrapped[1] -= digits_move_y;
+    }
+}
 
 const WorkCycleState = struct {
     update_position: UpdatePosition,
@@ -466,149 +480,14 @@ const WorkCycleState = struct {
             _ = this; // autofix
             _ = iteration_amount; // autofix
 
-            const at_min_edge_y = state_tree.digits.isMinY();
-            const at_min_edge_x = state_tree.digits.isMinX();
+            const position_mutation = digitPositionMutation(backup_client);
 
-            backup_client.at_max_border_x = at_min_edge_x;
-            backup_client.at_max_border_y = at_min_edge_y;
+            applyDigitPositionMutation(backup_client, position_mutation);
 
-            digitIncrement(3);
-            const at_edge_y = state_tree.digits.isMaxY();
-            const at_edge_x = state_tree.digits.isMaxX();
-            digitDecrement(3);
+            backup_client = applyPositionMutation(backup_client, position_mutation);
 
-            backup_client.at_min_border_x = at_edge_x;
-            backup_client.at_min_border_y = at_edge_y;
-
-            if (!backup_client.inBounds() and state_tree.digits.length > 1) {
-                const movement_unit = @as(f64, @floatFromInt(backup_client.canvas_width)) * 0.5 * backup_client.zoom;
-
-                var increment_digit: u2 = 0;
-                var decrement_digit: u2 = 0;
-
-                const max_offset_x: f64 = 0;
-                const max_offset_y: f64 = 0;
-
-                const min_offset_x = backup_client.minOffsetX();
-                const min_offset_y = backup_client.minOffsetY();
-
-                const offset_x = if (at_min_edge_x)
-                    @min(max_offset_x, backup_client.offset_x)
-                else if (at_edge_x)
-                    @max(min_offset_x, backup_client.offset_x)
-                else
-                    backup_client.offset_x;
-
-                // const offset_x = backup_client.offset_x;
-
-                const offset_y = if (at_min_edge_y)
-                    @min(max_offset_y, backup_client.offset_y)
-                else if (at_edge_y)
-                    @max(min_offset_y, backup_client.offset_y)
-                else
-                    backup_client.offset_y;
-
-                // const offset_y = backup_client.offset_y;
-
-                if (offset_x < min_offset_x and offset_x + movement_unit <= max_offset_x) {
-                    increment_digit |= 0b01;
-                }
-
-                if (offset_y < min_offset_y and offset_y + movement_unit <= max_offset_y) {
-                    increment_digit |= 0b10;
-                }
-
-                if (offset_x > max_offset_x and offset_x - movement_unit >= min_offset_x) {
-                    decrement_digit |= 0b01;
-                }
-
-                if (offset_y > max_offset_y and offset_y - movement_unit >= min_offset_y) {
-                    decrement_digit |= 0b10;
-                }
-
-                backup_client.digitIncrement(increment_digit);
-
-                backup_client.digitDecrement(decrement_digit);
-
-                digitIncrement(increment_digit);
-                digitDecrement(decrement_digit);
-
-                if (increment_digit == 0 and decrement_digit == 0) {
-                    var additional_decrement: u2 = 0;
-
-                    if (state_tree.digits.isMaxXBelow(state_tree.digits.length - 1)) {
-                        additional_decrement |= 0b01;
-                    }
-
-                    if (state_tree.digits.isMaxYBelow(state_tree.digits.length - 1)) {
-                        additional_decrement |= 0b10;
-                    }
-
-                    const last_digit = state_tree.digits.get(state_tree.digits.length - 1);
-
-                    backup_client.removeDigit(last_digit);
-                    backup_client.digitDecrement(additional_decrement);
-
-                    removeDigitAndDecrement(additional_decrement);
-                }
-
-                state_iteration_count = 0;
-                parent_square_size = 64;
-                filled_pixels = false;
-
-                return true;
-            } else if (backup_client.zoom >= 2 and backup_client.inBounds()) {
-                for (0..4) |increment_digit| {
-                    for (0..4) |append_digit| {
-                        if ((at_edge_x and append_digit & 1 == 1 and increment_digit & 1 == 1) or
-                            (at_edge_y and append_digit >> 1 == 1 and increment_digit >> 1 == 1))
-                        {
-                            continue;
-                        }
-
-                        var test_client = backup_client;
-
-                        test_client.digitIncrement(@intCast(increment_digit));
-
-                        test_client.appendDigit(@intCast(append_digit));
-
-                        const initial_states = offset_initial_states;
-
-                        digitIncrementAndAppend(@intCast(increment_digit), @intCast(append_digit));
-
-                        {
-                            test_client.at_max_border_x = state_tree.digits.isMinX();
-                            test_client.at_max_border_y = state_tree.digits.isMinY();
-
-                            digitIncrement(3);
-                            test_client.at_min_border_x = state_tree.digits.isMaxX();
-                            test_client.at_min_border_y = state_tree.digits.isMaxY();
-                            digitDecrement(3);
-                        }
-
-                        if (test_client.inBounds()) {
-                            backup_client = test_client;
-
-                            state_iteration_count = 0;
-
-                            const square_size_shift: usize = @intFromFloat(@max(0, (std.math.log2(display_client.zoom / 2))));
-
-                            if (parent_square_size > display_square_size >> @intCast(square_size_shift)) {
-                                parent_square_size = display_square_size >> @intCast(square_size_shift);
-                            }
-
-                            filled_pixels = false;
-
-                            return true;
-                        }
-
-                        removeDigitAndDecrement(@intCast(increment_digit));
-
-                        offset_initial_states = initial_states;
-                    }
-                }
-            }
-
+            state_iteration_count = 0;
+            filled_pixels = false;
             position_dirty = false;
 
             return false;
@@ -617,15 +496,20 @@ const WorkCycleState = struct {
 
     const FillPixels = struct {
         initialized: bool,
-        output_color_chunks: [4][][]render.Color,
-        output_color_chunks_backing: [][]render.Color,
-        setup_initial_states: bool,
+        rect_iteration_state: ?render.FillRectIterationState,
+        regions: ?[4]struct {
+            start_x: usize,
+            end_x: usize,
+            start_y: usize,
+            end_y: usize,
+        },
+        current_region: usize,
 
         pub const init: FillPixels = .{
             .initialized = false,
-            .output_color_chunks = undefined,
-            .output_color_chunks_backing = undefined,
-            .setup_initial_states = undefined,
+            .rect_iteration_state = null,
+            .regions = null,
+            .current_region = 0,
         };
 
         pub fn canIterate(this: FillPixels) bool {
@@ -635,43 +519,32 @@ const WorkCycleState = struct {
         fn initialize(this: *FillPixels) void {
             this.initialized = true;
 
-            this.setup_initial_states = false;
-
             state_iteration_count = 1;
 
-            if (parent_pixels.len > 0 and parent_pixels.len != parent_square_size * parent_square_size) {
-                if (parent_pixels_buf.len < parent_square_size * parent_square_size) {
-                    parent_pixels_buf = allocator.realloc(parent_pixels_buf, parent_square_size * parent_square_size) catch @panic("OOM");
+            const new_parent_pixels_len = (parent_pixels_width) * (parent_pixels_height);
+
+            if (parent_pixels.len > 0 and parent_pixels.len != new_parent_pixels_len) {
+                if (parent_pixels_buf.len < new_parent_pixels_len) {
+                    parent_pixels_buf = allocator.realloc(parent_pixels_buf, new_parent_pixels_len) catch @panic("OOM");
                 }
 
-                parent_pixels = parent_pixels_buf[0 .. parent_square_size * parent_square_size];
+                parent_pixels = parent_pixels_buf[0..new_parent_pixels_len];
+
+                pixels_offsets = null;
             } else if (parent_pixels.len == 0) {
-                parent_pixels_buf = allocator.alloc(render.Color, parent_square_size * parent_square_size) catch @panic("OOM");
+                parent_pixels_buf = allocator.alloc(render.Color, new_parent_pixels_len) catch @panic("OOM");
 
-                parent_pixels = parent_pixels_buf[0 .. parent_square_size * parent_square_size];
+                parent_pixels = parent_pixels_buf[0..new_parent_pixels_len];
+
+                pixels_offsets = null;
             }
 
-            this.output_color_chunks_backing = allocator.alloc([]render.Color, parent_square_size * 2) catch @panic("OOM");
-
-            const sub_square_size = parent_square_size / 2;
-
-            for (&this.output_color_chunks, 0..) |*output_color_chunk, i| {
-                output_color_chunk.* = this.output_color_chunks_backing[i * sub_square_size .. (i + 1) * sub_square_size];
-            }
-
-            for (&this.output_color_chunks, 0..) |output_color_chunk, i| {
-                const x_offset = (i & 1) * sub_square_size;
-                const y_offset = (i >> 1) * sub_square_size;
-
-                for (0..parent_square_size / 2) |y| {
-                    const offset_x = x_offset;
-                    const offset_y = y + y_offset;
-
-                    const start_idx = offset_y * (parent_square_size) + offset_x;
-
-                    output_color_chunk[y] = parent_pixels[start_idx .. start_idx + sub_square_size];
-                }
-            }
+            // @memset(parent_pixels, .{
+            //     .r = 0,
+            //     .g = 0,
+            //     .b = 255,
+            //     .a = 60,
+            // });
         }
 
         fn deinitialize(this: *FillPixels) void {
@@ -681,12 +554,19 @@ const WorkCycleState = struct {
         }
 
         fn reset(this: *FillPixels) void {
-            allocator.free(this.output_color_chunks_backing);
+            if (this.rect_iteration_state) |*rect_state| {
+                allocator.free(rect_state.output_colors);
+                rect_state.deinit();
+            }
 
             this.initialized = false;
+            this.rect_iteration_state = null;
+            this.regions = null;
+            this.current_region = 0;
         }
 
         pub fn iterate(this: *FillPixels, iteration_amount: usize) bool {
+            _ = iteration_amount; // autofix
             if (this.initialized and state_iteration_count == 0) {
                 this.reset();
             }
@@ -697,118 +577,338 @@ const WorkCycleState = struct {
                 return true;
             }
 
-            // const start_time_outer = js.getTime();
-            // defer {
-            //     const end_time_outer = js.getTime();
+            var temp_client = backup_client;
 
-            //     if (end_time_outer - start_time_outer > 3) {
-            //         jsPrint("fillPixelsIterate time: {d} ms", .{end_time_outer - start_time_outer});
+            temp_client.updatePosition(@as(f64, @floatFromInt(temp_client.canvas_width)) / 2.0, @as(f64, @floatFromInt(temp_client.canvas_height)) / 2.0, @as(f64, 1.0) / base_zoom_multiplier);
+
+            const region_clip_min_x_float = @max(0, -temp_client.offset_x / ((temp_client.zoom * pixel_ratio)));
+            var region_clip_min_x: usize = @intFromFloat(region_clip_min_x_float);
+
+            const region_clip_min_y_float = @max(0, -temp_client.offset_y / ((temp_client.zoom * pixel_ratio)));
+            var region_clip_min_y: usize = @intFromFloat(region_clip_min_y_float);
+
+            const region_clip_width: usize = @intFromFloat(@ceil(@as(f64, @floatFromInt(parent_pixels_width)) / temp_client.zoom));
+            const region_clip_height: usize = @intFromFloat(@ceil(@as(f64, @floatFromInt(parent_pixels_height)) / temp_client.zoom));
+
+            var region_clip_max_x = @min(state_tree.diffToMaxX() +| 1, parent_pixels_width, region_clip_min_x + region_clip_width + 1);
+            var region_clip_max_y = @min(state_tree.diffToMaxY() +| 1, parent_pixels_height, region_clip_min_y + region_clip_height + 1);
+
+            if (region_clip_min_x > region_clip_max_x or region_clip_min_y > region_clip_max_y) {
+                region_clip_min_x = 0;
+                region_clip_min_y = 0;
+
+                region_clip_max_x = 0;
+                region_clip_max_y = 0;
+            }
+
+            // Initialize regions if not already done
+            if (this.regions == null) {
+                // if (pixels_offsets) |pixels_offsets_unwrapped| {
+                //     const temp_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+                //     defer allocator.free(temp_pixels);
+
+                //     for (0..parent_pixels_height) |old_y| {
+                //         for (0..parent_pixels_width) |old_x| {
+                //             const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
+                //             const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
+
+                //             if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
+                //                 temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = parent_pixels[old_y * (parent_pixels_width) + old_x];
+                //             }
+                //         }
+                //     }
+
+                //     @memset(parent_pixels_buf, .{
+                //         .r = 255,
+                //         .g = 0,
+                //         .b = 0,
+                //         .a = 50,
+                //     });
+
+                //     for (0..parent_pixels_height) |old_y| {
+                //         for (0..parent_pixels_width) |old_x| {
+                //             const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
+                //             const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
+
+                //             if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
+                //                 parent_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)];
+                //             }
+                //         }
+                //     }
+                // }
+
+                if (pixels_offsets) |pixels_offsets_unwrapped| {
+                    const temp_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
+                    defer allocator.free(temp_pixels);
+
+                    for (pixels_clean_region[0][1]..pixels_clean_region[1][1]) |old_y| {
+                        for (pixels_clean_region[0][0]..pixels_clean_region[1][0]) |old_x| {
+                            const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
+                            const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
+
+                            if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
+                                temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = parent_pixels[old_y * (parent_pixels_width) + old_x];
+                            }
+                        }
+                    }
+
+                    // @memset(parent_pixels_buf, .{
+                    //     .r = 255,
+                    //     .g = 0,
+                    //     .b = 0,
+                    //     .a = 50,
+                    // });
+
+                    for (pixels_clean_region[0][1]..pixels_clean_region[1][1]) |old_y| {
+                        for (pixels_clean_region[0][0]..pixels_clean_region[1][0]) |old_x| {
+                            const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
+                            const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
+
+                            if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
+                                parent_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)];
+                            }
+                        }
+                    }
+                }
+
+                var clean_pixel_range_x: [2]usize = @splat(0);
+                var clean_pixel_range_y: [2]usize = @splat(0);
+
+                // if (pixels_offsets) |pixels_offsets_unwrapped| {
+                //     if (@abs(pixels_offsets_unwrapped[0]) < parent_pixels_width and @abs(pixels_offsets_unwrapped[1]) < parent_pixels_height) {
+                //         if (pixels_offsets_unwrapped[0] < 0) {
+                //             clean_pixel_range_x = .{
+                //                 0,
+                //                 @intCast(@as(isize, @intCast(parent_pixels_width)) + pixels_offsets_unwrapped[0]),
+                //             };
+                //         } else {
+                //             clean_pixel_range_x = .{
+                //                 @intCast(pixels_offsets_unwrapped[0]),
+                //                 parent_pixels_width,
+                //             };
+                //         }
+
+                //         if (pixels_offsets_unwrapped[1] < 0) {
+                //             clean_pixel_range_y = .{
+                //                 0,
+                //                 @intCast(@as(isize, @intCast(parent_pixels_height)) + pixels_offsets_unwrapped[1]),
+                //             };
+                //         } else {
+                //             clean_pixel_range_y = .{
+                //                 @intCast(pixels_offsets_unwrapped[1]),
+                //                 parent_pixels_height,
+                //             };
+                //         }
+                //     }
+                // }
+
+                if (pixels_offsets) |pixels_offsets_unwrapped| {
+                    const pixel_offset_x = pixels_offsets_unwrapped[0];
+                    const pixel_offset_y = pixels_offsets_unwrapped[1];
+
+                    const pixels_clean_region_start_x: isize = @intCast(pixels_clean_region[0][0]);
+                    const pixels_clean_region_end_x: isize = @intCast(pixels_clean_region[1][0]);
+
+                    const pixels_clean_region_start_y: isize = @intCast(pixels_clean_region[0][1]);
+                    const pixels_clean_region_end_y: isize = @intCast(pixels_clean_region[1][1]);
+
+                    clean_pixel_range_x = .{
+                        @intCast(@max(0, pixels_clean_region_start_x + pixel_offset_x)),
+                        @intCast(@max(0, @min(@as(isize, @intCast(parent_pixels_width)), pixels_clean_region_end_x + pixel_offset_x))),
+                    };
+
+                    clean_pixel_range_y = .{
+                        @intCast(@max(0, pixels_clean_region_start_y + pixel_offset_y)),
+                        @intCast(@max(0, @min(@as(isize, @intCast(parent_pixels_height)), pixels_clean_region_end_y + pixel_offset_y))),
+                    };
+                }
+
+                const pixel_width = parent_pixels_width;
+                const pixel_height = parent_pixels_height;
+
+                this.regions = .{
+                    // Top region
+                    .{
+                        .start_x = 0,
+                        .end_x = pixel_width,
+                        .start_y = 0,
+                        .end_y = clean_pixel_range_y[0],
+                    },
+                    // Bottom region
+                    .{
+                        .start_x = 0,
+                        .end_x = pixel_width,
+                        .start_y = clean_pixel_range_y[1],
+                        .end_y = pixel_height,
+                    },
+                    // Left region (middle)
+                    .{
+                        .start_x = 0,
+                        .end_x = clean_pixel_range_x[0],
+                        .start_y = clean_pixel_range_y[0],
+                        .end_y = clean_pixel_range_y[1],
+                    },
+                    // Right region (middle)
+                    .{
+                        .start_x = clean_pixel_range_x[1],
+                        .end_x = pixel_width,
+                        .start_y = clean_pixel_range_y[0],
+                        .end_y = clean_pixel_range_y[1],
+                    },
+                };
+
+                if (this.regions) |*regions| {
+                    for (regions) |*region| {
+                        region.start_x = @max(region.start_x, region_clip_min_x);
+                        region.start_y = @max(region.start_y, region_clip_min_y);
+
+                        // region.end_x = @max(region.end_x, region_clip_min_x);
+                        // region.end_y = @max(region.end_y, region_clip_min_y);
+
+                        // region.start_x = @min(region.start_x, region_clip_max_x);
+                        // region.start_y = @min(region.start_y, region_clip_max_y);
+
+                        region.end_x = @min(region.end_x, region_clip_max_x);
+                        region.end_y = @min(region.end_y, region_clip_max_y);
+
+                        region.start_y = @min(region.start_y, region.end_y);
+                        region.start_x = @min(region.start_x, region.end_x);
+                    }
+                }
+
+                this.current_region = 0;
+
+                pixels_offsets = null;
+            }
+
+            // Process one region at a time
+            if (this.current_region < 4) {
+                const regions = this.regions.?;
+                const region = regions[this.current_region];
+
+                // Skip empty regions
+                if (region.end_x <= region.start_x or region.end_y <= region.start_y) {
+                    this.rect_iteration_state = null;
+                    this.current_region += 1;
+                    return true;
+                }
+
+                const chunks_width = region.end_x - region.start_x;
+                const chunks_height = region.end_y - region.start_y;
+
+                state_tree.addX(region.start_x);
+                state_tree.addY(region.start_y);
+
+                defer {
+                    state_tree.subtractX(region.start_x);
+                    state_tree.subtractY(region.start_y);
+                }
+
+                if (this.rect_iteration_state == null) {
+                    // Prepare chunks for this region
+                    const chunks = allocator.alloc([]render.Color, chunks_height) catch @panic("OOM");
+
+                    const pixel_width = parent_pixels_width;
+                    for (chunks, 0..) |*chunks_row, i| {
+                        chunks_row.* = parent_pixels[(i + region.start_y) * pixel_width + region.start_x ..][0..chunks_width];
+                    }
+
+                    // Initialize the FillRectIterationState for this region
+                    this.rect_iteration_state = render.FillRectIterationState.init(
+                        allocator,
+                        &state_tree,
+                        chunks,
+                    ) catch @panic("OOM");
+                }
+
+                // Perform one iteration of filling
+                if (this.rect_iteration_state.?.iterate(iteration_rate * 100) catch @panic("OOM")) {
+                    // Still processing this region
+                    return true;
+                } else {
+                    // This region is done, clean up
+                    if (this.rect_iteration_state) |*rect_state| {
+                        allocator.free(rect_state.output_colors);
+                        rect_state.deinit();
+                    }
+                    this.rect_iteration_state = null;
+
+                    // Move to the next region
+                    this.current_region += 1;
+
+                    // If we have more regions to process, continue
+                    if (this.current_region < 4) {
+                        return true;
+                    }
+                }
+            }
+
+            // for (0..parent_pixels_height) |y| {
+            //     for (0..parent_pixels_width) |x| {
+            //         if (y >= region_clip_max_y or x >= region_clip_max_x or y < region_clip_min_y or x < region_clip_min_x) {
+            //             parent_pixels[y * (parent_pixels_width) + x] = .{
+            //                 .r = 255,
+            //                 .g = 0,
+            //                 .b = 0,
+            //                 .a = 70,
+            //             };
+            //         }
             //     }
             // }
 
-            const sub_square_size = parent_square_size / 2;
-
-            if (!this.setup_initial_states) {
-                // printDigits();
-
-                offset_initial_states = @splat(null);
-
-                for (0..4) |i| {
-                    if (offset_initial_states[i] == null) {
-                        const start_time = js.getTime();
-
-                        digitIncrement(@intCast(i));
-                        const initial_state = state_tree.endingState() catch @panic("OOM");
-                        digitDecrement(@intCast(i));
-
-                        // const tester = render.stateFromDigits(
-                        //     render.SelfConsumingReaderState.init(0, root_color),
-                        //     state_tree.quadrant_digits[i],
-                        //     state_tree.quadrant_digits[i].length,
-                        // );
-
-                        // if (@reduce(.Or, initial_state.color != tester.color)) {
-                        //     jsPrint("MISMATCH: {} {}", .{ initial_state.color, tester.color });
-                        //     @panic("");
-                        // }
-
-                        const end_time = js.getTime();
-
-                        if (end_time - start_time > 2) {
-                            jsPrint("traverseFromRoot time: {d} ms", .{end_time - start_time});
-                        }
-
-                        offset_initial_states[i] = initial_state;
-                    }
-
-                    const initial_state = offset_initial_states[i].?;
-
-                    // var initial_state: render.SelfConsumingReaderState = .init(0, root_color);
-                    // for (0..state_tree.quadrant_digits[i].length) |j| {
-                    //     initial_state.iterateMutate(state_tree.quadrant_digits[i].get(j), render.VirtualDigitArray.fromDigitArray(state_tree.quadrant_digits[i], 0, 0, 0));
-                    // }
-
-                    // jsPrint("{}", .{initial_state});
-                    // jsPrint("pos: {}", .{initial_state.absolutePosition()});
-
-                    const color_chunks = this.output_color_chunks[i];
-
-                    if (iteration_states[i] == null) {
-                        iteration_states[i] = render.FillIterationState.init(
-                            allocator,
-                            sub_square_size,
-                            state_tree.digits,
-                            initial_state,
-                            color_chunks,
-                        ) catch @panic("OOM");
-                    } else {
-                        const start_time = js.getTime();
-
-                        defer {
-                            const end_time = js.getTime();
-
-                            if (end_time - start_time > 2) {
-                                jsPrint("iteration_states reset time: {d} ms", .{end_time - start_time});
-                            }
-                        }
-
-                        iteration_states[i].?.reset(
-                            sub_square_size,
-                            state_tree.digits,
-                            initial_state,
-                            color_chunks,
-                        ) catch @panic("OOM");
-                    }
+            if (region_clip_min_y > 0) {
+                for (region_clip_min_x -| 1..@min(parent_pixels_width, region_clip_max_x + 1)) |x| {
+                    const y = region_clip_min_y - 1;
+                    parent_pixels[y * (parent_pixels_width) + x] = .{
+                        .r = 0,
+                        .g = 0,
+                        .b = 0,
+                        .a = 0,
+                    };
                 }
-
-                this.setup_initial_states = true;
-
-                return true;
             }
 
-            var all_iterations_done = true;
-
-            for (0..4) |i| {
-                const iteration_state = &(iteration_states[i].?);
-
-                digitIncrement(@intCast(i));
-                const start_time = js.getTime();
-
-                const temp = iteration_state.iterate(iteration_amount);
-
-                const end_time = js.getTime();
-                digitDecrement(@intCast(i));
-
-                if (end_time - start_time > 2) {
-                    jsPrint("iteration_state iterate time: {d} ms", .{end_time - start_time});
+            if (region_clip_max_y < parent_pixels_height) {
+                for (region_clip_min_x -| 1..@min(parent_pixels_width, region_clip_max_x + 1)) |x| {
+                    const y = region_clip_max_y;
+                    parent_pixels[y * (parent_pixels_width) + x] = .{
+                        .r = 0,
+                        .g = 0,
+                        .b = 0,
+                        .a = 0,
+                    };
                 }
-
-                all_iterations_done = all_iterations_done and !temp;
             }
 
-            if (!all_iterations_done) {
-                return true;
+            if (region_clip_min_x > 0) {
+                for (region_clip_min_y -| 1..@min(parent_pixels_height, region_clip_max_y + 1)) |y| {
+                    const x = region_clip_min_x - 1;
+                    parent_pixels[y * (parent_pixels_width) + x] = .{
+                        .r = 0,
+                        .g = 0,
+                        .b = 0,
+                        .a = 0,
+                    };
+                }
             }
+
+            if (region_clip_max_x < parent_pixels_width) {
+                for (region_clip_min_y -| 1..@min(parent_pixels_height, region_clip_max_y + 1)) |y| {
+                    const x = region_clip_max_x;
+                    parent_pixels[y * (parent_pixels_width) + x] = .{
+                        .r = 0,
+                        .g = 0,
+                        .b = 0,
+                        .a = 0,
+                    };
+                }
+            }
+
+            pixels_offsets = .{ 0, 0 };
+
+            pixels_clean_region = .{ .{ region_clip_min_x, region_clip_min_y }, .{ region_clip_max_x, region_clip_max_y } };
+
+            // pixels_offsets = null;
 
             this.deinitialize();
 
@@ -818,16 +918,12 @@ const WorkCycleState = struct {
 
     const RefreshDisplay = struct {
         initialized: bool,
-        update_old_display: bool,
         display_pixels_copy_state: MemcpyIterationState(render.Color),
-        old_display_pixels_copy_state: MemcpyIterationState(render.Color),
         started_filling_bitmap: bool,
 
         pub const init: RefreshDisplay = .{
             .initialized = false,
-            .update_old_display = undefined,
             .display_pixels_copy_state = undefined,
-            .old_display_pixels_copy_state = undefined,
             .started_filling_bitmap = false,
         };
 
@@ -852,54 +948,15 @@ const WorkCycleState = struct {
                 display_pixels = display_pixels_buf[0..parent_pixels.len];
             }
             this.display_pixels_copy_state = MemcpyIterationState(render.Color).init(display_pixels, parent_pixels);
-
-            const adjusted_old_display_square_size = @as(f64, @floatFromInt(old_display_square_size)) / old_display_client.zoom;
-            const adjusted_display_square_size = @as(f64, @floatFromInt(parent_square_size)) / backup_client.zoom;
-
-            const area_ratio = old_display_client.areaInViewportRatio();
-
-            this.update_old_display = wait_until_backup or
-                old_display_pixels.len == 0 or
-                @as(f64, @floatFromInt(parent_square_size)) >= @min(@as(f64, @floatFromInt(old_display_square_size)), (@as(f64, @floatFromInt(old_display_square_size)) * old_display_client.zoom * 2)) or
-                area_ratio == 0 or
-                adjusted_old_display_square_size < adjusted_display_square_size;
-
-            if (this.update_old_display) {
-                if (old_display_pixels_buf.len < parent_pixels.len) {
-                    if (old_display_pixels_buf.len == 0) {
-                        old_display_pixels_buf = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
-                    } else {
-                        old_display_pixels_buf = allocator.realloc(old_display_pixels_buf, parent_pixels.len) catch @panic("OOM");
-                    }
-                }
-
-                old_display_pixels = old_display_pixels_buf[0..parent_pixels.len];
-
-                this.old_display_pixels_copy_state = MemcpyIterationState(render.Color).init(old_display_pixels, parent_pixels);
-            }
         }
 
         fn deinitialize(this: *RefreshDisplay) void {
             this.initialized = false;
             this.started_filling_bitmap = false;
 
-            display_square_size = parent_square_size;
-
             filled_pixels = false;
 
-            display_client = backup_client;
-
-            if (this.update_old_display) {
-                old_display_square_size = parent_square_size;
-                old_display_client = backup_client;
-            }
-
             wait_until_backup = false;
-
-            if (parent_square_size < max_square_size) {
-                parent_square_size *= 2;
-                state_iteration_count = 0;
-            }
 
             updated_pixels = true;
 
@@ -917,7 +974,7 @@ const WorkCycleState = struct {
             defer {
                 const end_time = js.getTime();
 
-                if (end_time - start_time > 1) {
+                if (end_time - start_time > 10) {
                     jsPrint("refresh_display time: {d} ms", .{end_time - start_time});
                 }
             }
@@ -926,32 +983,12 @@ const WorkCycleState = struct {
                 return true;
             }
 
-            if (this.update_old_display) {
-                if (this.old_display_pixels_copy_state.iterate(iteration_amount)) {
-                    return true;
-                }
-            }
-
             if (!this.started_filling_bitmap) {
-                if (this.update_old_display) {
-                    js.fillImageBitmap(
-                        display_pixels.ptr,
-                        parent_square_size,
-                        parent_square_size,
-                        old_display_pixels.ptr,
-                        parent_square_size,
-                        parent_square_size,
-                    );
-                } else {
-                    js.fillImageBitmap(
-                        display_pixels.ptr,
-                        parent_square_size,
-                        parent_square_size,
-                        old_display_pixels.ptr,
-                        old_display_square_size,
-                        old_display_square_size,
-                    );
-                }
+                js.fillImageBitmap(
+                    display_pixels.ptr,
+                    parent_pixels_width,
+                    parent_pixels_height,
+                );
                 this.started_filling_bitmap = true;
             }
 
@@ -966,13 +1003,6 @@ const WorkCycleState = struct {
     };
 
     pub fn cycle(this: *WorkCycleState, iteration_amount: usize) bool {
-        if (parent_square_size < 2) {
-            parent_square_size = 2;
-            state_iteration_count = 0;
-
-            return true;
-        }
-
         if (this.refresh_display.canIterate()) {
             if (this.refresh_display.iterate(iteration_amount)) {
                 return true;
@@ -1146,10 +1176,16 @@ export fn init() void {
     //     }
     // }
 
-    // for (0..4) |i| {
-    //     state_tree.appendDigit(i, @intCast(i)) catch @panic("OOM");
+    for (0..10) |i| {
+        state_tree.appendDigit(@truncate(i)) catch @panic("OOM");
+    }
+
+    // for (0..std.math.log2(parent_square_size)) |_| {
+    //     state_tree.appendDigit(0) catch @panic("OOM");
     // }
-    state_tree.appendDigit(0) catch @panic("OOM");
+
+    // trailing_digit_count = std.math.log2(parent_square_size);
+
 }
 
 var offset_digits_packed_with_digit_offset: []u8 = &.{};
@@ -1165,17 +1201,18 @@ export fn setOffsetAlloc(size: usize) [*]u8 {
 
 export fn setOffset() void {
     state_iteration_count = 0;
-    // iteration_done = false;
+
     position_dirty = true;
 
     wait_until_backup = true;
 
+    filled_pixels = false;
+
+    pixels_offsets = null;
+
     backup_client.offset_x = 0;
     backup_client.offset_y = 0;
     backup_client.zoom = 1;
-    parent_square_size = 64;
-
-    offset_initial_states = @splat(null);
 
     defer allocator.free(offset_digits_packed_with_digit_offset);
 
@@ -1196,16 +1233,6 @@ export fn setOffset() void {
             }
         }
     }
-
-    const max_x = state_tree.digits.isMaxX();
-    const max_y = state_tree.digits.isMaxY();
-
-    if (max_x) {
-        state_tree.decrementX();
-    }
-    if (max_y) {
-        state_tree.decrementY();
-    }
 }
 
 var find_image_data: []render.Color = &.{};
@@ -1220,24 +1247,33 @@ export fn findImageAlloc(size: usize) [*]render.Color {
 
 export fn findImage() void {
     state_iteration_count = 0;
-    // iteration_done = false;
+
     position_dirty = true;
 
     wait_until_backup = true;
 
-    backup_client.offset_x = 0;
-    backup_client.offset_y = 0;
+    filled_pixels = false;
 
+    pixels_offsets = null;
+
+    parent_pixels_width = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_width)) / pixel_ratio);
+    parent_pixels_height = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_height)) / pixel_ratio);
+
+    // backup_client.offset_x = (@as(f64, @floatFromInt(backup_client.canvas_width)) - @as(f64, @floatFromInt(image_square_size * pixel_ratio)) / 2.0) / 2.0;
+    // backup_client.offset_y = (@as(f64, @floatFromInt(backup_client.canvas_height)) - @as(f64, @floatFromInt(image_square_size * pixel_ratio)) / 2.0) / 2.0;
+    // backup_client.zoom = 1;
+
+    backup_client.offset_x = (@as(f64, @floatFromInt(backup_client.canvas_width)) -
+        @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
+    backup_client.offset_y = (@as(f64, @floatFromInt(backup_client.canvas_height)) -
+        @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
     backup_client.zoom = 1;
-    parent_square_size = 64;
 
-    backup_client.updatePosition(
-        @as(f64, @floatFromInt(backup_client.canvas_width)) / 2.0,
-        @as(f64, @floatFromInt(backup_client.canvas_height)) / 2.0,
-        0.5,
-    );
-
-    offset_initial_states = @splat(null);
+    // backup_client.updatePosition(
+    //     @as(f64, @floatFromInt(backup_client.canvas_width)) / 2.0,
+    //     @as(f64, @floatFromInt(backup_client.canvas_height)) / 2.0,
+    //     0.5,
+    // );
 
     var enc = render.encodeColors(allocator, find_image_data) catch @panic("OOM");
     defer enc.deinit(allocator);
@@ -1251,7 +1287,9 @@ export fn findImage() void {
         state_tree.appendDigit(digit) catch @panic("OOM");
     }
 
-    state_tree.appendDigit(0) catch @panic("OOM");
+    for (0..std.math.log2_int_ceil(usize, @min(parent_pixels_width, parent_pixels_height)) - 1) |_| {
+        state_tree.appendDigit(0) catch @panic("OOM");
+    }
 }
 
 export fn getOffsetAlloc() [*]u8 {

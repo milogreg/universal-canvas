@@ -3,59 +3,34 @@ let memory;
 let exports;
 
 let dataBitmap;
-let oldDataBitmap;
 
 let pollingBitmap = false;
 
 const env = {
-    fillImageBitmap: (
-        dataPtr,
-        width,
-        height,
-        oldDataPtr,
-        oldWidth,
-        oldHeight
-    ) => {
+    fillImageBitmap: (dataPtr, width, height) => {
         const data = new Uint8ClampedArray(
-            memory.buffer,
-            dataPtr,
-            width * height * 4
-        );
-
-        const oldData = new Uint8ClampedArray(
-            memory.buffer,
-            oldDataPtr,
-            oldWidth * oldHeight * 4
+            new Uint8ClampedArray(memory.buffer, dataPtr, width * height * 4)
         );
 
         const imageData = new ImageData(data, width, height);
-
-        const oldImageData = new ImageData(oldData, oldWidth, oldHeight);
 
         pollingBitmap = true;
         setTimeout(async () => {
             const startTime = performance.now();
 
-            const options = {
-                resizeWidth: 2048,
-                resizeHeight: 2048,
-                resizeQuality: "pixelated",
-            };
+            // const options = {
+            //     resizeWidth: 2048,
+            //     resizeHeight: 2048,
+            //     resizeQuality: "pixelated",
+            // };
 
-            const [newDataBitmap, newOldDataBitmap] = await Promise.all([
-                createImageBitmap(imageData),
-                createImageBitmap(oldImageData),
-            ]);
+            const newDataBitmap = await createImageBitmap(imageData);
 
             if (dataBitmap) {
                 dataBitmap.close();
             }
-            if (oldDataBitmap) {
-                oldDataBitmap.close();
-            }
 
             dataBitmap = newDataBitmap;
-            oldDataBitmap = newOldDataBitmap;
 
             pollingBitmap = false;
 
@@ -75,14 +50,17 @@ const env = {
         offsetY,
         zoom,
 
-        oldOffsetX,
-        oldOffsetY,
-        oldZoom,
+        clipX,
+        clipY,
+
+        clipWidth,
+        clipHeight,
 
         updatedPixels,
-        maxDetail
+        maxDetail,
+        version
     ) => {
-        if (!updatedPixels || !dataBitmap || !oldDataBitmap) {
+        if (!updatedPixels || !dataBitmap) {
             self.postMessage({
                 type: "renderImage",
 
@@ -91,12 +69,14 @@ const env = {
                 offsetY,
                 zoom,
 
-                oldData: null,
-                oldOffsetX,
-                oldOffsetY,
-                oldZoom,
+                clipX,
+                clipY,
+
+                clipWidth,
+                clipHeight,
 
                 maxDetail,
+                version,
             });
 
             return;
@@ -111,18 +91,19 @@ const env = {
                 offsetY,
                 zoom,
 
-                oldData: oldDataBitmap,
-                oldOffsetX,
-                oldOffsetY,
-                oldZoom,
+                clipX,
+                clipY,
+
+                clipWidth,
+                clipHeight,
 
                 maxDetail,
+                version,
             },
-            [dataBitmap, oldDataBitmap]
+            [dataBitmap]
         );
 
         dataBitmap = undefined;
-        oldDataBitmap = undefined;
     },
 
     printString: (ptr, len) => {
@@ -169,14 +150,22 @@ self.onmessage = function (e) {
         offsetArray,
         offsetX,
         offsetY,
+
         mouseX,
         mouseY,
         zoomDelta,
+
+        zoom,
+        viewportWidth,
+        viewportHeight,
+
+        version,
 
         imageSquareSize,
 
         findImageData,
     } = e.data;
+
     switch (type) {
         case "setOffset": {
             const size = offsetArray.length;
@@ -230,26 +219,25 @@ self.onmessage = function (e) {
             break;
         }
 
-        case "zoomViewport": {
-            exports.zoomViewport(mouseX, mouseY, zoomDelta);
+        case "updatePosition": {
+            exports.updatePosition(
+                offsetX,
+                offsetY,
+                zoom,
+                viewportWidth,
+                viewportHeight,
+                version
+            );
 
-            self.postMessage({ type: "zoomViewportComplete" });
+            self.postMessage({ type: "updatePositionComplete" });
 
             break;
         }
 
-        case "moveViewport": {
-            exports.moveViewport(offsetX, offsetY);
+        case "resetPosition": {
+            exports.resetPosition(viewportWidth, viewportHeight);
 
-            self.postMessage({ type: "moveViewportComplete" });
-
-            break;
-        }
-
-        case "resizeViewport": {
-            exports.resizeViewport(canvasWidth, canvasHeight);
-
-            self.postMessage({ type: "resizeViewportComplete" });
+            self.postMessage({ type: "resetPositionComplete" });
 
             break;
         }
@@ -315,7 +303,7 @@ async function workCycleLoop() {
         backoff = !exports.workCycle() || pollingBitmap;
         const endTime = performance.now();
         const executionTime = endTime - startTime;
-        if (executionTime > 3) {
+        if (executionTime > 100) {
             console.log(
                 `workCycle execution time: ${executionTime} milliseconds`
             );
@@ -332,4 +320,6 @@ async function workCycleLoop() {
         workCycleSleepTime = 1;
         channel.port2.postMessage("");
     }
+
+    // setTimeout(workCycleLoop, 100);
 }

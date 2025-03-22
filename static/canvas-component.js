@@ -538,21 +538,27 @@ class ClientPosition {
             return;
         }
 
-        this.offsetX /= this.canvasWidth;
-        this.offsetY /= this.canvasHeight;
+        // Convert current offsets to relative positions (0-1)
+        const relativeX = this.offsetX / this.canvasWidth;
+        const relativeY = this.offsetY / this.canvasHeight;
 
+        // Update dimensions
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
 
-        this.offsetX *= this.canvasWidth;
-        this.offsetY *= this.canvasHeight;
+        // Convert back to absolute positions with new dimensions
+        this.offsetX = relativeX * this.canvasWidth;
+        this.offsetY = relativeY * this.canvasHeight;
     }
 }
 
 /**
  * @typedef {Object} PushCacheData
  * @property {ImageBitmap|null} data - Main image bitmap
- * @property {ImageBitmap|null} oldData - Old image bitmap
+ * @property {number} clipX
+ * @property {number} clipY
+ * @property {number} clipWidth
+ * @property {number} clipHeight
  */
 
 /**
@@ -581,10 +587,16 @@ class CanvasComponent extends HTMLElement {
     #resizeObserver = null;
 
     /** @type {ClientPosition|null} Current position information */
-    #cachedPosition = null;
+    #cachedPosition = {
+        zoom: 1,
+        offsetX: 0,
+        offsetY: 0,
+        canvasWidth: 1,
+        canvasHeight: 1,
+    };
 
-    /** @type {ClientPosition|null} Previous position information */
-    #oldCachedPosition = null;
+    /** @type {boolean} */
+    #initializedWorkerPosition = false;
 
     /** @type {PushCacheData|null} Cache for image data */
     #pushCache = null;
@@ -613,11 +625,11 @@ class CanvasComponent extends HTMLElement {
     /** @type {ImageBitmapRenderingContext|null} Context for main canvas */
     #displayCtx = null;
 
-    /** @type {HTMLCanvasElement|null} Secondary display canvas */
-    #oldDisplayCanvas = null;
+    /** @type {HTMLDivElement|null} Main display canvas parent */
+    #displayCanvasParent = null;
 
-    /** @type {ImageBitmapRenderingContext|null} Context for secondary canvas */
-    #oldDisplayCtx = null;
+    /** @type {number} */
+    #displayCanvasBaseScale = 1;
 
     /** @type {HTMLDivElement|null} Loading animation element */
     #canvasLoadingAnimation = null;
@@ -640,6 +652,9 @@ class CanvasComponent extends HTMLElement {
     /** @type {Object.<string, number>} Map of key press start times */
     #keyPressStartTimes = {};
 
+    /** @type {number} Integer version number of position, used to coordinate with worker */
+    #positionVersion = 0n;
+
     /**
      * Creates a new CanvasComponent instance
      */
@@ -649,9 +664,15 @@ class CanvasComponent extends HTMLElement {
         // Create shadow DOM
         this.attachShadow({ mode: "open" });
 
-        // Initialize positions
-        this.#cachedPosition = new ClientPosition(1, 0, 0, 1, 1);
-        this.#oldCachedPosition = new ClientPosition(1, 0, 0, 1, 1);
+        // Initialize position with actual width and height
+        const rect = this.getBoundingClientRect();
+        this.#cachedPosition = new ClientPosition(
+            1,
+            0,
+            0,
+            rect.width || 1,
+            rect.height || 1
+        );
     }
 
     /**
@@ -739,20 +760,20 @@ class CanvasComponent extends HTMLElement {
                 background: repeating-linear-gradient(45deg, var(--bg-primary), var(--bg-primary) 2.5%, var(--bg-secondary) 2.5%, var(--bg-secondary) 5%);
             }
 
-            #display-canvas, #old-display-canvas {
+            #display-canvas {
+                pointer-events: none;
+                z-index: 0;
+            }
+
+            #canvas-parent {
                 will-change: transform;
                 top: 0;
                 left: 0;
                 position: absolute;
                 pointer-events: none;
-            }
-
-            #display-canvas {
                 z-index: 0;
-            }
-
-            #old-display-canvas {
-                z-index: 1;
+                transform-origin: top left;
+                backface-visibility: hidden;
             }
 
             @keyframes inverse-waterdrop {
@@ -777,8 +798,9 @@ class CanvasComponent extends HTMLElement {
                 animation: inverse-waterdrop 1s linear infinite;
             }
         </style>
-        <canvas id="display-canvas"></canvas>
-        <canvas id="old-display-canvas"></canvas>
+        <div id="canvas-parent">
+            <canvas id="display-canvas"></canvas>
+        </div>
         <div id="canvas-loading"></div>
         `;
 
@@ -788,12 +810,8 @@ class CanvasComponent extends HTMLElement {
         this.#displayCanvas.height = 2048;
         this.#displayCtx = this.#displayCanvas.getContext("bitmaprenderer");
 
-        this.#oldDisplayCanvas =
-            this.shadowRoot.getElementById("old-display-canvas");
-        this.#oldDisplayCanvas.width = 2048;
-        this.#oldDisplayCanvas.height = 2048;
-        this.#oldDisplayCtx =
-            this.#oldDisplayCanvas.getContext("bitmaprenderer");
+        this.#displayCanvasParent =
+            this.shadowRoot.getElementById("canvas-parent");
 
         this.#canvasLoadingAnimation =
             this.shadowRoot.getElementById("canvas-loading");
@@ -862,12 +880,12 @@ class CanvasComponent extends HTMLElement {
                 offsetX,
                 offsetY,
                 zoom,
-                oldData,
-                oldOffsetX,
-                oldOffsetY,
-                oldZoom,
+                clipX,
+                clipY,
+                clipWidth,
+                clipHeight,
                 maxDetail,
-
+                version,
                 imageUrl,
             } = e.data;
 
@@ -894,30 +912,68 @@ class CanvasComponent extends HTMLElement {
                         if (this.#pushCache.data) {
                             this.#pushCache.data.close();
                         }
-                        this.#pushCache.data = data;
+
+                        this.#pushCache = {
+                            data,
+                            clipX,
+                            clipY,
+                            clipWidth,
+                            clipHeight,
+                        };
 
                         this.#cachedPosition = new ClientPosition(
                             zoom,
                             offsetX,
                             offsetY,
-                            this.squareSize,
-                            this.squareSize
+                            this.width || 1,
+                            this.height || 1
                         );
-                    }
 
-                    if (oldData) {
-                        if (this.#pushCache.oldData) {
-                            this.#pushCache.oldData.close();
+                        this.#positionVersion = version;
+
+                        if ((Number(version) & 1) == 1) {
+                            this.#updateWorkerPosition();
                         }
-                        this.#pushCache.oldData = oldData;
 
-                        this.#oldCachedPosition = new ClientPosition(
-                            oldZoom,
-                            oldOffsetX,
-                            oldOffsetY,
-                            this.squareSize,
-                            this.squareSize
-                        );
+                        {
+                            const toTransform = data;
+
+                            let effectiveToTransformWidth = toTransform.width;
+                            let effectiveToTransformHeight = toTransform.height;
+
+                            // if (
+                            //     Math.abs(
+                            //         this.width / this.height -
+                            //             toTransform.width / toTransform.height
+                            //     ) > 0.00001
+                            // ) {
+                            //     if (
+                            //         this.width / this.height >
+                            //         toTransform.width / toTransform.height
+                            //     ) {
+                            //         effectiveToTransformWidth =
+                            //             toTransform.height *
+                            //             (this.width / this.height);
+                            //     } else {
+                            //         effectiveToTransformHeight =
+                            //             toTransform.width *
+                            //             (this.height / this.width);
+                            //     }
+                            // }
+
+                            let scaleX = this.width / effectiveToTransformWidth;
+
+                            // const transformX = 100 * scaleX;
+                            // const transformY = 100 * scaleX;
+
+                            // const transformX = 0;
+                            // const transformY = 0;
+
+                            // this.offsetX = -transformX;
+                            // this.offsetY = -transformY;
+
+                            this.#displayCanvasBaseScale = scaleX;
+                        }
                     }
 
                     this.#renderWake();
@@ -928,166 +984,48 @@ class CanvasComponent extends HTMLElement {
                     downloadLink.href = imageUrl;
                     downloadLink.download = "image.png";
                     downloadLink.click();
+                    break;
                 }
                 case "zoomViewportComplete":
                 case "moveViewportComplete":
                 case "resizeViewportComplete":
                 case "findImageComplete":
+                case "updatePositionComplete":
+                case "resetPositionComplete":
                     break;
                 default:
                     console.error("Unknown message type from worker:", type);
             }
         };
-
-        this.#worker.postMessage({ type: "workCycle" });
     }
 
     // Handle resize events
     #handleResize(clientWidth, clientHeight) {
-        const canvasSquareSize = Math.max(clientWidth, clientHeight);
+        const sizeMultiplier = 1;
 
-        this.width = clientWidth;
-        this.height = clientHeight;
+        this.width = Math.floor(clientWidth * sizeMultiplier);
+        this.height = Math.floor(clientHeight * sizeMultiplier);
 
-        if (clientWidth > clientHeight) {
-            this.offsetX = 0;
-            this.offsetY = (clientWidth - clientHeight) / 2;
-        } else {
-            this.offsetX = (clientHeight - clientWidth) / 2;
-            this.offsetY = 0;
-        }
+        // No need to calculate offsets for centering in a square
+        // since we're using the full rectangular area
+        this.offsetX = (this.width - clientWidth) / 2;
+        this.offsetY = (this.height - clientHeight) / 2;
 
-        this.squareSize = canvasSquareSize;
-
-        this.#cachedPosition.updateDimensions(
-            canvasSquareSize,
-            canvasSquareSize
-        );
-        this.#oldCachedPosition.updateDimensions(
-            canvasSquareSize,
-            canvasSquareSize
-        );
+        // Update position with actual dimensions
+        this.#cachedPosition.updateDimensions(clientWidth, clientHeight);
 
         this.#renderWake();
 
         if (this.#workerInitialized) {
-            this.#worker.postMessage({
-                type: "resizeViewport",
-                canvasWidth: canvasSquareSize,
-                canvasHeight: canvasSquareSize,
-            });
-        }
-    }
-
-    // Handle worker messages
-    async #handleWorkerMessage(e) {
-        const {
-            type,
-            fileUrl,
-            data,
-            offsetX,
-            offsetY,
-            zoom,
-            oldData,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom,
-            maxDetail,
-        } = e.data;
-
-        switch (type) {
-            case "initComplete": {
-                await this.#handleWorkerInitComplete();
-                break;
-            }
-            case "setOffsetComplete":
-                break;
-            case "saveOffsetComplete": {
-                const downloadLink = document.createElement("a");
-                downloadLink.href = fileUrl;
-                downloadLink.download = "position.bin";
-                downloadLink.click();
-                break;
-            }
-            case "renderImage": {
-                this.#renderImage(
-                    data,
-                    offsetX,
-                    offsetY,
-                    zoom,
-                    oldData,
-                    oldOffsetX,
-                    oldOffsetY,
-                    oldZoom,
-                    maxDetail
-                );
-                break;
-            }
-            case "zoomViewportComplete":
-            case "moveViewportComplete":
-            case "resizeViewportComplete":
-            case "findImageComplete":
-                break;
-            default:
-                console.error("Unknown message type from worker:", type);
+            this.#updateWorkerPosition();
         }
     }
 
     // Handle worker initialization complete
     async #handleWorkerInitComplete() {
-        await new Promise((resolve) => {
-            const handleWorkerMessage = (e) => {
-                if (e.data.type === "resizeViewportComplete") {
-                    this.#worker.removeEventListener(
-                        "message",
-                        handleWorkerMessage
-                    );
-                    resolve();
-                }
-            };
-            this.#worker.addEventListener("message", handleWorkerMessage);
-            this.#worker.postMessage({
-                type: "resizeViewport",
-                canvasWidth: this.squareSize,
-                canvasHeight: this.squareSize,
-            });
-        });
+        this.#updateWorkerPosition();
 
-        await new Promise((resolve) => {
-            const handleWorkerMessage = (e) => {
-                if (e.data.type === "zoomViewportComplete") {
-                    this.#worker.removeEventListener(
-                        "message",
-                        handleWorkerMessage
-                    );
-                    resolve();
-                }
-            };
-
-            const mouseX = this.width / 2;
-            const mouseY = this.height / 2;
-            const zoomFactor =
-                (Math.min(this.width, this.height) / this.squareSize) * 0.8;
-
-            this.#worker.addEventListener("message", handleWorkerMessage);
-            this.#worker.postMessage({
-                type: "zoomViewport",
-                mouseX: mouseX + this.offsetX,
-                mouseY: mouseY + this.offsetY,
-                zoomDelta: zoomFactor,
-            });
-
-            this.#cachedPosition.updatePosition(
-                mouseX + this.offsetX,
-                mouseY + this.offsetY,
-                zoomFactor
-            );
-            this.#oldCachedPosition.updatePosition(
-                mouseX + this.offsetX,
-                mouseY + this.offsetY,
-                zoomFactor
-            );
-        });
+        this.#worker.postMessage({ type: "workCycle" });
 
         this.#workerInitialized = true;
     }
@@ -1101,25 +1039,13 @@ class CanvasComponent extends HTMLElement {
             0.1
         );
 
-        this.#worker.postMessage({
-            type: "zoomViewport",
-            mouseX: event.offsetX + this.offsetX,
-            mouseY: event.offsetY + this.offsetY,
-            zoomDelta:
-                event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor,
-        });
-
         this.#cachedPosition.updatePosition(
             event.offsetX + this.offsetX,
             event.offsetY + this.offsetY,
             event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
         );
 
-        this.#oldCachedPosition.updatePosition(
-            event.offsetX + this.offsetX,
-            event.offsetY + this.offsetY,
-            event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
-        );
+        this.#updateWorkerPosition();
 
         this.#renderWake();
     }
@@ -1127,13 +1053,9 @@ class CanvasComponent extends HTMLElement {
     #handlePointerDrag(event) {
         event = event.detail;
         if (!this.clickZoom) {
-            this.#worker.postMessage({
-                type: "moveViewport",
-                offsetX: event.deltaX,
-                offsetY: event.deltaY,
-            });
             this.#cachedPosition.move(event.deltaX, event.deltaY);
-            this.#oldCachedPosition.move(event.deltaX, event.deltaY);
+
+            this.#updateWorkerPosition();
 
             this.#renderWake();
         }
@@ -1145,12 +1067,12 @@ class CanvasComponent extends HTMLElement {
 
         const scrollZoomFactor = event.scale;
 
-        this.#worker.postMessage({
-            type: "zoomViewport",
-            mouseX: event.offsetX + this.offsetX,
-            mouseY: event.offsetY + this.offsetY,
-            zoomDelta: scrollZoomFactor,
-        });
+        // this.#worker.postMessage({
+        //     type: "zoomViewport",
+        //     mouseX: event.offsetX + this.offsetX,
+        //     mouseY: event.offsetY + this.offsetY,
+        //     zoomDelta: scrollZoomFactor,
+        // });
 
         this.#cachedPosition.updatePosition(
             event.offsetX + this.offsetX,
@@ -1158,11 +1080,7 @@ class CanvasComponent extends HTMLElement {
             scrollZoomFactor
         );
 
-        this.#oldCachedPosition.updatePosition(
-            event.offsetX + this.offsetX,
-            event.offsetY + this.offsetY,
-            scrollZoomFactor
-        );
+        this.#updateWorkerPosition();
 
         this.#renderWake();
     }
@@ -1226,78 +1144,24 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Rendering methods
-    #renderImage(
-        data,
-        offsetX,
-        offsetY,
-        zoom,
-        oldData,
-        oldOffsetX,
-        oldOffsetY,
-        oldZoom,
-        maxDetail
-    ) {
-        if (!this.#pushCache) {
-            this.#pushCache = {};
-        }
-
-        if (data) {
-            if (this.#pushCache.data) {
-                this.#pushCache.data.close();
-            }
-            this.#pushCache.data = data;
-
-            this.#cachedPosition = new ClientPosition(
-                zoom,
-                offsetX,
-                offsetY,
-                this.squareSize,
-                this.squareSize
-            );
-        }
-
-        if (oldData) {
-            if (this.#pushCache.oldData) {
-                this.#pushCache.oldData.close();
-            }
-            this.#pushCache.oldData = oldData;
-
-            this.#oldCachedPosition = new ClientPosition(
-                oldZoom,
-                oldOffsetX,
-                oldOffsetY,
-                this.squareSize,
-                this.squareSize
-            );
-        }
-
-        this.#renderWake();
-    }
-
     #pushImage() {
-        let data,
-            offsetX,
-            offsetY,
-            zoom,
-            oldData,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom;
+        let data, offsetX, offsetY, zoom;
+
+        let clipX, clipY, clipWidth, clipHeight;
 
         if (this.#pushCache) {
             data = this.#pushCache.data;
-            oldData = this.#pushCache.oldData;
+            clipX = this.#pushCache.clipX;
+            clipY = this.#pushCache.clipY;
+            clipWidth = this.#pushCache.clipWidth;
+            clipHeight = this.#pushCache.clipHeight;
+
             this.#pushCache = undefined;
         }
 
         offsetX = this.#cachedPosition.offsetX - this.offsetX;
         offsetY = this.#cachedPosition.offsetY - this.offsetY;
         zoom = this.#cachedPosition.zoom;
-
-        oldOffsetX = this.#oldCachedPosition.offsetX - this.offsetX;
-        oldOffsetY = this.#oldCachedPosition.offsetY - this.offsetY;
-        oldZoom = this.#oldCachedPosition.zoom;
 
         if (this.#loading) {
             if (!data) {
@@ -1311,16 +1175,21 @@ class CanvasComponent extends HTMLElement {
         const startTime = performance.now();
 
         if (data) {
+            this.#displayCanvas.width = data.width;
+            this.#displayCanvas.height = data.height;
             this.#displayCtx.transferFromImageBitmap(data);
-            this.#oldDisplayCtx.transferFromImageBitmap(oldData);
+
+            this.#displayCanvas.style.clipPath = `xywh(${clipX}px ${clipY}px ${clipWidth}px ${clipHeight}px)`;
         }
 
-        this.#transformCanvas(this.#displayCanvas, offsetX, offsetY, zoom);
         this.#transformCanvas(
-            this.#oldDisplayCanvas,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom
+            this.#displayCanvasParent,
+
+            offsetX,
+
+            offsetY,
+
+            zoom * this.#displayCanvasBaseScale
         );
 
         const endTime = performance.now();
@@ -1331,19 +1200,12 @@ class CanvasComponent extends HTMLElement {
     }
 
     #transformCanvas(toTransform, offsetX, offsetY, zoom) {
-        const squareRatio = this.squareSize / toTransform.width;
-        const squareSizeDiff =
-            zoom * squareRatio * toTransform.width - toTransform.width;
-        const transformX = offsetX + squareSizeDiff / 2;
-        const transformY = offsetY + squareSizeDiff / 2;
-        const transformScale = zoom * squareRatio;
-
         toTransform.style.transform = `
             matrix(
-                ${transformScale}, 
+                ${zoom},
                 0, 0,
-                ${transformScale},
-                ${transformX}, ${transformY}
+                ${zoom},
+                ${offsetX}, ${offsetY}
             )
         `;
     }
@@ -1451,6 +1313,8 @@ class CanvasComponent extends HTMLElement {
 
             if (this.#workerInitialized) {
                 if (!this.#loading) {
+                    let positionChanged = false;
+
                     // Handle click zoom with proper timing
                     if (this.#isMouseDown && this.clickZoom) {
                         // Calculate time since mouse was pressed down
@@ -1467,23 +1331,15 @@ class CanvasComponent extends HTMLElement {
                             mouseDeltaTime
                         );
 
-                        this.#worker.postMessage({
-                            type: "zoomViewport",
-                            mouseX: this.#mouseX + this.offsetX,
-                            mouseY: this.#mouseY + this.offsetY,
-                            zoomDelta: zoomFactor,
-                        });
                         this.#cachedPosition.updatePosition(
                             this.#mouseX + this.offsetX,
                             this.#mouseY + this.offsetY,
                             zoomFactor
                         );
-                        this.#oldCachedPosition.updatePosition(
-                            this.#mouseX + this.offsetX,
-                            this.#mouseY + this.offsetY,
-                            zoomFactor
-                        );
+
                         this.#imageDirty = true;
+
+                        positionChanged = true;
                     }
 
                     // Handle arrow key movement with proper timing
@@ -1517,29 +1373,32 @@ class CanvasComponent extends HTMLElement {
                             // Update time for next frame
                             this.#keyPressStartTimes[key] = currentFrameTime;
 
-                            const moveSpeed = this.squareSize * keyDeltaTime;
+                            // Adjust move speed based on canvas dimensions
+                            const moveSpeed =
+                                Math.min(this.width, this.height) *
+                                keyDeltaTime;
 
                             if (key === "ArrowUp") {
-                                offsetY -= moveSpeed;
-                            } else if (key === "ArrowDown") {
                                 offsetY += moveSpeed;
+                            } else if (key === "ArrowDown") {
+                                offsetY -= moveSpeed;
                             } else if (key === "ArrowLeft") {
-                                offsetX -= moveSpeed;
-                            } else if (key === "ArrowRight") {
                                 offsetX += moveSpeed;
+                            } else if (key === "ArrowRight") {
+                                offsetX -= moveSpeed;
                             }
                         }
 
                         if (offsetX !== 0 || offsetY !== 0) {
-                            this.#worker.postMessage({
-                                type: "moveViewport",
-                                offsetX,
-                                offsetY,
-                            });
                             this.#cachedPosition.move(offsetX, offsetY);
-                            this.#oldCachedPosition.move(offsetX, offsetY);
                             this.#imageDirty = true;
+
+                            positionChanged = true;
                         }
+                    }
+
+                    if (positionChanged) {
+                        this.#updateWorkerPosition();
                     }
                 }
 
@@ -1552,6 +1411,32 @@ class CanvasComponent extends HTMLElement {
         };
 
         requestAnimationFrame(this.#renderLoop);
+    }
+
+    #updateWorkerPosition() {
+        if (this.#initializedWorkerPosition) {
+            this.#worker.postMessage({
+                type: "updatePosition",
+                offsetX: this.#cachedPosition.offsetX,
+                offsetY: this.#cachedPosition.offsetY,
+                zoom: this.#cachedPosition.zoom,
+                viewportWidth: this.width || 1,
+                viewportHeight: this.height || 1,
+                version: this.#positionVersion,
+            });
+        } else {
+            this.#canvasFadeOut();
+
+            this.#loading = true;
+
+            this.#initializedWorkerPosition = true;
+
+            this.#worker.postMessage({
+                type: "resetPosition",
+                viewportWidth: this.width || 1,
+                viewportHeight: this.height || 1,
+            });
+        }
     }
 
     /**
