@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
         <meta name="viewport" content="width=device-width" />
         <title>Square</title>
@@ -31,43 +31,69 @@
             <div class="max-width-container">
                 <h2>What am I looking at?</h2>
                 <p>
-                    The Universal Canvas is infinitely detailed and contains
-                    every finite pattern. This means that any possible image of
-                    any resolution can be found within the Universal Canvas,
-                    simply by zooming in.
+                    <strong>
+                        You are seeing every work of art, every idea, every
+                        thing, etched onto a single square.
+                    </strong>
                 </p>
                 <p>
-                    It goes beyond that, though. Not only does every image exist
-                    within the Universal Canvas, every image exists within every
-                    subdivision of the Canvas. So, if you cut a section out of
-                    the canvas, no matter how small, that section will also
-                    contain every possible image.
+                    However, it may be hard to make out all the details from
+                    your vantage. After all, to fit everything on a finite
+                    canvas you must paint with a very fine brush.
+                </p>
+                <p>
+                    You could squint, but there's no need to strain your eyes.
+                    Simply zoom in to observe the smaller details of the canvas.
+                    Zoom in far enough and you might even find yourself.
+                </p>
+
+                <br />
+                <div class="dotted-box">
+                    <p>
+                        <strong>The Universal Canvas...</strong>
+                    </p>
+                    <ul>
+                        <li>has a finite area, but is infinitely detailed.</li>
+                        <li>contains every image of every resolution.</li>
+                        <li>
+                            can be cut into any number of pieces, and each one
+                            will still contain every image of every resolution.
+                        </li>
+                    </ul>
+                </div>
+                <br />
+
+                <p>
+                    You may not believe me. After all, it's easy to make claims
+                    about pseudo-random patterns that 'make sense', but don't
+                    have any actual backing (see "every sequence of digits
+                    exists in pi").
+                </p>
+                <p>
+                    But there's no need to trust me. I understand that this is
+                    hard to believe, that's why I added the image search
+                    feature. Just load any image and I will figure out where it
+                    is in the canvas and zoom in on it for you.
                 </p>
 
                 <hr />
-                <h2>What does this actually mean?</h2>
+                <h2>How is an 'image' defined?</h2>
                 <p>
-                    In the first section, I glossed over how a 'pattern' or an
-                    'image' is actually defined. If an image was just a grid of
-                    pixels, each having a perfect solid color, then what I said
-                    about every subdivision containing every image would
-                    obviously be impossible, as the subdivision of a single
-                    black pixel would contain nothing but black.
+                    The Universal Canvas is not made up of pixels. However, the
+                    canvas can be rendered to pixels. Every pixel in a rendering
+                    of the canvas corresponds to a specific square region of the
+                    canvas, and the pixel's color is the average color of the
+                    square region.
                 </p>
                 <p>
-                    The way that I define an image is as a grid of pixels, each
-                    of which has not a solid color, but an average color. This
-                    way, a rendered image can have the appearance of solid
-                    colors due to the averaging of details smaller than a pixel,
-                    while still having infinite detail within each pixel. So, an
-                    image 'existing' at a given resolution really means that
-                    there exists some region within the Universal Canvas, that,
-                    if rendered at said resolution by averaging details smaller
-                    than a pixel, would produce the image.
+                    An image existing at a given resolution means that there is
+                    a region within the canvas, that, when rendered at said
+                    resolution, would produce the same pixels as the original
+                    image.
                 </p>
 
                 <hr />
-                <h2>How is it implemented?</h2>
+                <h2>How am I running this on my computer?</h2>
                 <p>
                     So, I've gone on about how the Universal Canvas has infinite
                     detail and contains infinite information, but at the end of
@@ -75,151 +101,76 @@
                     actually doing infinite computation and storing infinite
                     data.
                 </p>
+
                 <p>
-                    Lorem, ipsum dolor sit amet consectetur adipisicing elit.
-                    Reiciendis at molestiae officia ab ducimus consequuntur,
-                    placeat ipsam explicabo sapiente, deleniti voluptate quasi
-                    iure perferendis harum nihil exercitationem voluptas.
-                    Provident, tempore.
+                    The core principle that the implementation of the canvas
+                    relies on is subdivision. The canvas is a square, which can
+                    be split into 4 squares, which can be split into 16 squares,
+                    etc. As we subdivide the canvas we refine the detail of the
+                    rendered colors. We start with a single solid color, then
+                    find the 4 colors that compose it, then find the colors that
+                    compose those colors, etc.
                 </p>
 
-                <hr />
-                <h2>Lorem, ipsum.</h2>
                 <p>
-                    Lorem ipsum dolor sit amet consectetur adipisicing elit.
-                    Dicta et ducimus natus cum consequatur dolorem adipisci
-                    illum unde nesciunt libero eveniet, minus reiciendis
-                    laudantium aliquid similique officiis molestias. Labore ex
-                    velit obcaecati voluptate assumenda molestiae cum, in
-                    perspiciatis? Ab tempora beatae saepe modi nisi consequatur
-                    adipisci blanditiis perspiciatis dicta! Nam, perferendis
-                    natus cum ut voluptatum suscipit at repudiandae doloremque
-                    totam ducimus eius facere. Nihil velit nulla error libero
-                    tenetur, maxime ad eligendi quia rerum distinctio incidunt.
-                    Tempore, totam autem aliquam laudantium sed distinctio
-                    quidem eius nostrum ipsam quos delectus error non temporibus
-                    nobis dicta dolor omnis amet dignissimos vel fugit labore et
-                    illo? Nihil sequi recusandae, deleniti sed cumque quos
-                    aliquam ipsam pariatur quia corrupti? Necessitatibus soluta,
-                    maxime, praesentium architecto natus repellendus, explicabo
-                    itaque cupiditate dolorem magnam ipsam quisquam! Assumenda,
-                    sunt vel. Blanditiis aut iusto ipsam quisquam, voluptas
-                    itaque nihil eum possimus necessitatibus cupiditate
-                    exercitationem distinctio sunt dolores provident adipisci et
-                    laborum ducimus nostrum voluptate assumenda consectetur
-                    molestias quae repellat iure. Sunt architecto molestiae
-                    obcaecati velit voluptate libero soluta debitis quidem
-                    deleniti nesciunt. Aperiam nobis vitae natus accusamus odit
-                    voluptas dolorum minima corrupti corporis eum eos deserunt
-                    vero repellat ratione voluptatibus, non molestias tempora
-                    tenetur! Provident, ducimus. Modi fuga et error sed vel
-                    doloremque deleniti quos numquam odio saepe neque quod ad
-                    cupiditate, sit veritatis totam architecto repellendus? At
-                    soluta rem assumenda consequatur! Qui enim error repellat
-                    suscipit soluta sit assumenda ullam in perspiciatis autem,
-                    perferendis, voluptas corporis corrupti, tempore maxime
-                    fugiat quibusdam. Cupiditate dolores totam provident, sit
-                    molestiae maxime, minus mollitia veniam, illo sed
-                    reiciendis. Quam saepe quos doloribus facere sed deserunt
-                    quod mollitia nesciunt impedit possimus. Assumenda magni
-                    eaque quod cum, nemo doloribus architecto nam culpa omnis
-                    enim quam alias consequatur vero maiores, laboriosam totam
-                    facere distinctio. Modi, totam beatae? Rem nam modi tempora
-                    quisquam laboriosam blanditiis cum impedit perspiciatis vero
-                    animi cumque obcaecati optio nostrum dignissimos quidem
-                    voluptatem, sapiente aut tempore. Porro culpa fugiat vero ad
-                    sapiente exercitationem consequatur atque voluptatum
-                    architecto quaerat, aperiam adipisci minus dolorum
-                    laudantium ut ea, delectus itaque? Doloremque, quod
-                    repellat! Aperiam dolorem repellat vero ab esse repudiandae,
-                    illo dolor sapiente ratione veniam ducimus eius dicta
-                    doloremque autem, a laboriosam harum sint doloribus! Nisi
-                    culpa quia molestiae reiciendis sed autem voluptatem
-                    perferendis aspernatur voluptate ullam fugit id ducimus ad,
-                    voluptates ipsum ab rerum nam tempora dolorem veniam dolor?
-                    Quo voluptatum totam qui perferendis? Reiciendis aspernatur
-                    harum dolorum maxime saepe, recusandae sunt vel mollitia
-                    omnis distinctio! Dolorum repellat cupiditate modi libero
-                    quod amet dignissimos eum consequatur delectus laborum alias
-                    error sapiente iusto dolores obcaecati vitae, velit quis
-                    quaerat nam earum assumenda? Nesciunt reprehenderit sint,
-                    optio distinctio eligendi, quasi fugiat numquam aspernatur
-                    laboriosam hic obcaecati neque, impedit provident maiores
-                    asperiores. Cumque maxime temporibus facere quibusdam error
-                    voluptatum ipsa, itaque perferendis sit culpa aspernatur
-                    quis asperiores mollitia libero dicta quae omnis ratione
-                    deleniti reprehenderit eius quidem. Laboriosam, non eum!
-                    Officia maiores dignissimos molestias minima nisi. Impedit,
-                    minus modi quos nam temporibus aut minima optio, omnis nulla
-                    repellendus dolorem totam alias, facere dolores voluptate
-                    maxime nobis architecto aperiam sint consequuntur
-                    consequatur ipsa. Veritatis labore cumque sint? Ipsa
-                    dignissimos saepe, temporibus quasi provident similique
-                    voluptatem voluptates consequuntur vitae ducimus, voluptate
-                    architecto sint esse illum rem quam aut. Ipsam alias enim
-                    mollitia temporibus dolores tempora modi tenetur molestias
-                    nam inventore exercitationem sequi earum velit, iure fugiat
-                    omnis. Dignissimos amet quas enim in. Culpa libero
-                    cupiditate praesentium tempore veniam quaerat aperiam
-                    numquam mollitia, est sunt ex sint doloribus, necessitatibus
-                    quidem. Iusto pariatur, ab vero consectetur velit, quae
-                    quibusdam dolores dolorem repudiandae commodi minima numquam
-                    rem explicabo consequuntur labore, reprehenderit quidem
-                    aliquid cum voluptates voluptatibus. Dicta iusto quod earum,
-                    perspiciatis pariatur quo. Hic libero quia rerum maiores
-                    dolore cumque assumenda, corrupti non quae ipsa quidem
-                    doloremque minima odit dolores consequuntur aliquam. Autem
-                    quisquam sed debitis porro in commodi vero aliquam quaerat
-                    ad similique aperiam minus necessitatibus mollitia dolorum
-                    culpa accusamus at, veniam eum sint voluptatem laboriosam
-                    doloremque et. Debitis sunt sed iure similique sequi
-                    laudantium voluptates? Laboriosam delectus eaque vero
-                    excepturi explicabo sequi quia quas fugiat. Harum accusamus,
-                    doloremque laborum asperiores, ad laboriosam recusandae
-                    numquam magni quisquam, voluptatem et voluptatum magnam
-                    molestiae consequuntur facilis id? Ab optio quibusdam hic
-                    quos nulla est voluptatibus sint corporis ullam a ducimus
-                    quia, atque itaque saepe nemo, eius et aspernatur. Molestias
-                    incidunt asperiores laboriosam fugiat eum facere, impedit
-                    illo voluptates a vero consectetur quisquam dolorem vitae
-                    ipsa numquam, deserunt animi ad nesciunt minima, magnam
-                    sequi laudantium facilis? Facere impedit labore nesciunt
-                    expedita reprehenderit minima! Repellendus fuga esse
-                    accusamus reprehenderit ab quibusdam aut, deleniti
-                    necessitatibus impedit a dolores molestiae labore provident
-                    totam odit delectus distinctio optio? Earum ullam
-                    praesentium labore, iusto, quae itaque animi dignissimos
-                    accusamus maiores nemo, iste quaerat odio fugiat? Ad magnam
-                    doloribus eligendi molestias perferendis incidunt nobis?
-                    Voluptate expedita a mollitia, esse saepe temporibus nulla
-                    sapiente voluptatum dolores itaque at quo minus ipsa quia
-                    atque magni accusantium aut nesciunt incidunt hic numquam
-                    provident eos qui dignissimos. Sequi aspernatur laudantium
-                    laboriosam? Blanditiis alias soluta quidem iusto
-                    voluptatibus sequi. Quis quas quia incidunt quasi molestias
-                    laboriosam error est explicabo! Totam soluta, illum dolore
-                    quae reiciendis quos illo numquam consequuntur vitae tenetur
-                    recusandae fuga! Asperiores iste eum ratione! Ipsa eaque
-                    voluptatibus id odio molestias architecto delectus,
-                    assumenda officiis est hic. Illo molestias pariatur officia
-                    accusantium repudiandae, tenetur excepturi dignissimos
-                    numquam ipsam eos facilis ab id consectetur labore
-                    aspernatur est necessitatibus. Vero, non enim! Ipsa rerum
-                    sapiente odio veniam et rem iste in cupiditate eligendi
-                    dolore quae harum, culpa excepturi nesciunt recusandae amet
-                    quod dolores soluta eos ullam consequuntur est
-                    exercitationem. Accusantium hic dicta velit quasi! Eius amet
-                    numquam consequuntur quisquam debitis expedita esse quia
-                    totam quas sit est, magnam vero voluptates sed voluptatum
-                    nam atque qui nemo nihil ut deleniti vitae? Officiis commodi
-                    excepturi tempore porro, similique aperiam iusto. Dolorem
-                    ipsa enim dolor a dolore, voluptas id. Odit suscipit
-                    repellat ut autem voluptatum ullam iure reiciendis beatae,
-                    dolores voluptates quisquam aperiam veniam hic velit!
-                    Accusamus culpa nobis numquam veritatis possimus quos!
-                    Iusto, modi ab a accusantium sit illo placeat in. Explicabo,
-                    excepturi! Voluptatibus, excepturi. Dolor, temporibus.
+                    The key to making this technique work is the subdivision
+                    function, whose implementation hides the real magic behind
+                    the algorithm. But for now, we can just focus on
+                    <em>using</em> the function.
                 </p>
+
+                <p>
+                    The subdivision function takes a color, state, and a square
+                    region, and outputs 4 colors and 4 states. The 'state' is
+                    just a blob of data that the subdivision function uses to
+                    store information it needs on successive subdivisions. The
+                    'square region' is a region of the canvas that can be
+                    produced by recursively subdividing the full canvas into
+                    quadrants. The outputs of the function are the colors and
+                    states of the 4 quadrants composing the input square region.
+                </p>
+
+                <p>
+                    The square region covering the whole canvas is given a
+                    hardcoded color and state to use as the first input for the
+                    subdivision function.
+                </p>
+
+                <p>
+                    So, once you have this subdivision function, you can render
+                    any rectangular region of the canvas as follows:
+                </p>
+
+                <ul>
+                    <li>
+                        Create a set of square regions that contain a color and
+                        a state. The set should initially contain a single
+                        square region covering the entire canvas, whose color
+                        and state is hardcoded.
+                    </li>
+
+                    <li>
+                        Remove all regions from the set, subdivide them, and add
+                        the new subdivided regions to the set. Filter the set by
+                        removing all regions that don't overlap with the region
+                        you want to render.
+                    </li>
+                    <li>
+                        Let <var>n</var> be 5 or the number of pixels you wish
+                        to render, whichever is larger. If the set contains less
+                        than <var>n</var> regions, repeat the previous step.
+                    </li>
+
+                    <li>
+                        Render the square regions in the set to the screen, each
+                        one mapping to a square of solid color (pixel).
+                    </li>
+                </ul>
+
+                <hr />
+                <br />
+                <em>Further explanations coming soon</em>
+                <br />
             </div>
         </main>
         <script src="canvas-component.js"></script>

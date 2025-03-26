@@ -22,12 +22,14 @@
 }
 
 body {
+    font-family: 'Times New Roman', Times, serif;
+
     background-color: var(--bg-primary);
     color: var(--text-primary);
 
-
     padding-left: 1rem;
     padding-right: 1rem;
+    padding-bottom: 1rem;
     box-sizing: border-box;
 }
 
@@ -84,7 +86,7 @@ main {
     margin: 2rem 0 0 0
 }
 
-.max-width-container p {
+.max-width-container p, li {
     margin: 1rem;
     font-size: calc(1rem * var(--paragraph-font-size-multiplier));
 }
@@ -106,8 +108,8 @@ h2 {
     font-size: 2rem;
 }
 
-hr {
-    border: 1px solid var(--border-color);
+.dotted-box {
+    border: 0.3rem dotted var(--border-color);
 }
 
 body:has(canvas-component-controls[fake-fullscreen]) {
