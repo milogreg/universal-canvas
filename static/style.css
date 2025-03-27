@@ -120,3 +120,12 @@ canvas-component-controls {
     margin: 1rem;
     flex-grow: 1;
 }
+
+canvas-component-controls[fake-fullscreen] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvw;
+    height: 100dvh;
+    margin: 0;
+}
