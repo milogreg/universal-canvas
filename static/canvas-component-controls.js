@@ -7,6 +7,7 @@ class CanvasComponentControls extends HTMLElement {
         // Core properties
         this.canvasComponents = [];
         this._listenersAttached = false;
+        this.isDragging = false;
 
         // Create shadow DOM
         const shadow = this.attachShadow({ mode: "open" });
@@ -250,6 +251,52 @@ class CanvasComponentControls extends HTMLElement {
                     flex-grow: 1;
                     width: 100%;
                 }
+                
+                /* Drag and drop overlay */
+                .drag-drop-overlay {
+                    display: none;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(59, 130, 163, 0.7);
+                    z-index: 300;
+                    justify-content: center;
+                    align-items: center;
+                    pointer-events: none;
+                }
+                
+                .drag-drop-overlay.active {
+                    display: flex;
+                }
+                
+                .drag-drop-content {
+                    background-color: var(--bg-primary);
+                    border: 3px dashed var(--border-color);
+                    border-radius: var(--border-radius);
+                    padding: 2rem;
+                    text-align: center;
+                    max-width: 80%;
+                    pointer-events: none;
+                }
+                
+                .drag-drop-content svg {
+                    width: 4rem;
+                    height: 4rem;
+                    margin-bottom: 1rem;
+                    fill: var(--bg-button);
+                }
+                
+                .drag-drop-title {
+                    font-size: 1.5rem;
+                    margin-bottom: 0.5rem;
+                    color: var(--text-primary);
+                }
+                
+                .drag-drop-desc {
+                    color: var(--text-primary);
+                }
             </style>
             
             <!-- Menu toggle checkbox -->
@@ -350,6 +397,17 @@ class CanvasComponentControls extends HTMLElement {
                     <div class="canvas-container">
                         <slot></slot>
                         
+                        <!-- Drag and drop overlay -->
+                        <div class="drag-drop-overlay" id="drag-drop-overlay">
+                            <div class="drag-drop-content">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                                </svg>
+                                <div class="drag-drop-title">Drop image to search</div>
+                                <div class="drag-drop-desc">Drop your image file here to search for it</div>
+                            </div>
+                        </div>
+                        
                         <!-- Fullscreen toggle button -->
                         <label for="fullscreen-toggle" class="fullscreen-toggle-label" aria-label="Toggle fullscreen">
                             <svg class="expand-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -399,15 +457,7 @@ class CanvasComponentControls extends HTMLElement {
         this.handleFindImageInputChange = (event) => {
             if (event.target.files && event.target.files.length > 0) {
                 const file = event.target.files[0];
-                const resolution = parseInt(
-                    this.shadowRoot.getElementById("image-resolution").value,
-                    10
-                );
-
-                this.canvasComponents.forEach((component) => {
-                    component.searchImage(file, resolution);
-                });
-
+                this.processImageFile(file);
                 event.target.value = "";
             }
         };
@@ -449,6 +499,132 @@ class CanvasComponentControls extends HTMLElement {
                 this.removeAttribute("fake-fullscreen");
             }
         };
+
+        // Drag and drop handlers
+        this.handleDragEnter = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.isDragging = true;
+            this.shadowRoot
+                .getElementById("drag-drop-overlay")
+                .classList.add("active");
+        };
+
+        this.handleDragOver = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        };
+
+        this.handleDragLeave = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            // Check if we're leaving to an element outside our component
+            const rect = this.getBoundingClientRect();
+            const x = event.clientX;
+            const y = event.clientY;
+
+            if (
+                x <= rect.left ||
+                x >= rect.right ||
+                y <= rect.top ||
+                y >= rect.bottom
+            ) {
+                this.isDragging = false;
+                this.shadowRoot
+                    .getElementById("drag-drop-overlay")
+                    .classList.remove("active");
+            }
+        };
+
+        this.handleDrop = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            this.isDragging = false;
+            this.shadowRoot
+                .getElementById("drag-drop-overlay")
+                .classList.remove("active");
+
+            // Check if there are files
+            if (
+                event.dataTransfer.files &&
+                event.dataTransfer.files.length > 0
+            ) {
+                const file = event.dataTransfer.files[0];
+
+                // Only process image files
+                if (file.type.startsWith("image/")) {
+                    this.processImageFile(file);
+                    return;
+                }
+            }
+
+            // If no valid files, try to get HTML fragment
+            this.tryExtractImageFromHtml(event.dataTransfer);
+        };
+
+        // New method to extract image from HTML
+        this.tryExtractImageFromHtml = (dataTransfer) => {
+            // Try to get HTML data
+            const html = dataTransfer.getData("text/html");
+
+            if (html) {
+                // Create a temporary DOM parser
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, "text/html");
+
+                // Find the first image
+                const img = doc.querySelector("img");
+
+                if (img && img.src) {
+                    // Fetch the image and convert to a file/blob
+                    this.fetchImageFromUrl(img.src);
+                }
+            }
+        };
+
+        // New method to fetch image from URL
+        this.fetchImageFromUrl = (url) => {
+            // Handle relative URLs
+            const fullUrl = new URL(url, window.location.href).href;
+
+            fetch(fullUrl)
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error(
+                            `Failed to fetch image: ${response.status} ${response.statusText}`
+                        );
+                    }
+                    return response.blob();
+                })
+                .then((blob) => {
+                    // Create a File object from the blob
+                    const fileName =
+                        fullUrl.split("/").pop() || "dragged-image.jpg";
+                    const file = new File([blob], fileName, {
+                        type: blob.type,
+                    });
+
+                    // Process the file
+                    this.processImageFile(file);
+                })
+                .catch((error) => {
+                    console.error("Error fetching image:", error);
+                });
+        };
+    }
+
+    // Process an image file for search
+    processImageFile(file) {
+        const resolution = parseInt(
+            this.shadowRoot.getElementById("image-resolution").value,
+            10
+        );
+
+        this.canvasComponents.forEach((component) => {
+            component.searchImage(file, resolution);
+        });
     }
 
     // Attach event listeners
@@ -492,6 +668,27 @@ class CanvasComponentControls extends HTMLElement {
         shadow
             .getElementById("fullscreen-toggle")
             ?.addEventListener("change", this.handleFullscreenChange);
+
+        // Attach drag and drop event listeners to the canvas container
+        const canvasContainer = shadow.querySelector(".canvas-container");
+        if (canvasContainer) {
+            canvasContainer.addEventListener(
+                "dragenter",
+                this.handleDragEnter.bind(this)
+            );
+            canvasContainer.addEventListener(
+                "dragover",
+                this.handleDragOver.bind(this)
+            );
+            canvasContainer.addEventListener(
+                "dragleave",
+                this.handleDragLeave.bind(this)
+            );
+            canvasContainer.addEventListener(
+                "drop",
+                this.handleDrop.bind(this)
+            );
+        }
 
         this._listenersAttached = true;
     }
