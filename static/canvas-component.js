@@ -655,43 +655,63 @@ class CanvasComponent extends HTMLElement {
     /** @type {number} Integer version number of position, used to coordinate with worker */
     #positionVersion = 0n;
 
+    /** @type {boolean} Whether an error has occurred */
+    #hasError = false;
+
+    /** @type {HTMLDivElement|null} Error message element */
+    #errorMessageElement = null;
+
     /**
      * Creates a new CanvasComponent instance
      */
     constructor() {
         super();
 
-        // Create shadow DOM
-        this.attachShadow({ mode: "open" });
+        try {
+            // Create shadow DOM
+            this.attachShadow({ mode: "open" });
 
-        // Initialize position with actual width and height
-        const rect = this.getBoundingClientRect();
-        this.#cachedPosition = new ClientPosition(
-            1,
-            0,
-            0,
-            rect.width || 1,
-            rect.height || 1
-        );
+            // Initialize position with actual width and height
+            const rect = this.getBoundingClientRect();
+            this.#cachedPosition = new ClientPosition(
+                1,
+                0,
+                0,
+                rect.width || 1,
+                rect.height || 1
+            );
+        } catch (error) {
+            console.error("Error in CanvasComponent constructor:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
      * Lifecycle callback when element is added to the DOM
      */
     connectedCallback() {
-        // Initialize the component
-        this.#initializeComponent();
-        this.#setupEventListeners();
-        this.#initializeWorker();
-        this.#startRenderLoop();
+        try {
+            // Initialize the component
+            this.#initializeComponent();
+            this.#setupEventListeners();
+            this.#initializeWorker();
+            this.#startRenderLoop();
+        } catch (error) {
+            console.error("Error in connectedCallback:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
      * Lifecycle callback when element is removed from the DOM
      */
     disconnectedCallback() {
-        // Clean up resources
-        this.#cleanupResources();
+        try {
+            // Clean up resources
+            this.#cleanupResources();
+        } catch (error) {
+            console.error("Error in disconnectedCallback:", error);
+        }
     }
 
     /**
@@ -709,16 +729,57 @@ class CanvasComponent extends HTMLElement {
      * @param {string} newValue - New attribute value
      */
     attributeChangedCallback(name, oldValue, newValue) {
-        switch (name) {
-            case "click-zoom-rate":
-                this.clickZoomRate = Number(newValue) || 1;
-                break;
-            case "scroll-zoom-rate":
-                this.scrollZoomRate = Number(newValue) || 1;
-                break;
-            case "click-zoom":
-                this.clickZoom = newValue !== null;
-                break;
+        try {
+            switch (name) {
+                case "click-zoom-rate":
+                    this.clickZoomRate = Number(newValue) || 1;
+                    break;
+                case "scroll-zoom-rate":
+                    this.scrollZoomRate = Number(newValue) || 1;
+                    break;
+                case "click-zoom":
+                    this.clickZoom = newValue !== null;
+                    break;
+            }
+        } catch (error) {
+            console.error("Error in attributeChangedCallback:", error);
+            this.#showErrorMessage();
+        }
+    }
+
+    /**
+     * Shows an error message when something goes wrong
+     * @private
+     */
+    #showErrorMessage() {
+        if (this.#hasError) return; // Prevent showing multiple error messages
+
+        this.#hasError = true;
+
+        // Clean up resources first
+        this.#cleanupResources();
+
+        // Clear the shadow DOM
+        if (this.shadowRoot) {
+            this.shadowRoot.innerHTML = "";
+
+            // Create and style the error message
+            this.#errorMessageElement = document.createElement("div");
+            this.#errorMessageElement.textContent =
+                "Something went wrong, please refresh.";
+            this.#errorMessageElement.style.cssText = `
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                width: 100%;
+                height: 100%;
+                color: #ff3333;
+                background-color: #f8f8f8;
+                text-align: center;
+                box-sizing: border-box;
+            `;
+
+            this.shadowRoot.appendChild(this.#errorMessageElement);
         }
     }
 
@@ -823,391 +884,486 @@ class CanvasComponent extends HTMLElement {
 
     // Set up event listeners
     #setupEventListeners() {
-        // Set up ResizeObserver
-        this.#resizeObserver = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                const { clientWidth, clientHeight } = entry.target;
-                this.#handleResize(clientWidth, clientHeight);
-            }
-        });
+        try {
+            // Set up ResizeObserver
+            this.#resizeObserver = new ResizeObserver((entries) => {
+                try {
+                    for (const entry of entries) {
+                        const { clientWidth, clientHeight } = entry.target;
+                        this.#handleResize(clientWidth, clientHeight);
+                    }
+                } catch (error) {
+                    console.error("Error in ResizeObserver callback:", error);
+                    this.#showErrorMessage();
+                }
+            });
 
-        // Observe the component
-        this.#resizeObserver.observe(this);
+            // Observe the component
+            this.#resizeObserver.observe(this);
 
-        // Wheel event for zooming
-        this.addEventListener("wheel", this.#handleWheel.bind(this), {
-            passive: false,
-        });
+            // Wheel event for zooming
+            this.addEventListener("wheel", this.#handleWheel.bind(this), {
+                passive: false,
+            });
 
-        // Pointer events
-        this.addEventListener(
-            "pointerdrag",
-            this.#handlePointerDrag.bind(this)
-        );
-        this.addEventListener(
-            "pointerzoom",
-            this.#handlePointerZoom.bind(this)
-        );
+            // Pointer events
+            this.addEventListener(
+                "pointerdrag",
+                this.#handlePointerDrag.bind(this)
+            );
+            this.addEventListener(
+                "pointerzoom",
+                this.#handlePointerZoom.bind(this)
+            );
 
-        // Mouse events
-        this.addEventListener("mousedown", this.#handleMouseDown.bind(this));
-        this.addEventListener("mouseup", this.#handleMouseUp.bind(this));
-        this.addEventListener("mousemove", this.#handleMouseMove.bind(this));
+            // Mouse events
+            this.addEventListener(
+                "mousedown",
+                this.#handleMouseDown.bind(this)
+            );
+            this.addEventListener("mouseup", this.#handleMouseUp.bind(this));
+            this.addEventListener(
+                "mousemove",
+                this.#handleMouseMove.bind(this)
+            );
 
-        // Touch events
-        this.addEventListener("touchstart", this.#handleTouchStart.bind(this), {
-            passive: false,
-        });
-        this.addEventListener("touchend", this.#handleTouchEnd.bind(this));
-        this.addEventListener("touchmove", this.#handleTouchMove.bind(this), {
-            passive: false,
-        });
+            // Touch events
+            this.addEventListener(
+                "touchstart",
+                this.#handleTouchStart.bind(this),
+                {
+                    passive: false,
+                }
+            );
+            this.addEventListener("touchend", this.#handleTouchEnd.bind(this));
+            this.addEventListener(
+                "touchmove",
+                this.#handleTouchMove.bind(this),
+                {
+                    passive: false,
+                }
+            );
 
-        // Keyboard events
-        document.addEventListener("keydown", this.#handleKeyDown.bind(this));
-        document.addEventListener("keyup", this.#handleKeyUp.bind(this));
+            // Keyboard events
+            document.addEventListener(
+                "keydown",
+                this.#handleKeyDown.bind(this)
+            );
+            document.addEventListener("keyup", this.#handleKeyUp.bind(this));
+        } catch (error) {
+            console.error("Error in setupEventListeners:", error);
+            this.#showErrorMessage();
+        }
     }
 
     // Initialize Web Worker
     #initializeWorker() {
-        this.#worker = new Worker("wasm-worker.js");
+        try {
+            this.#worker = new Worker("wasm-worker.js");
 
-        this.#worker.onmessage = async (e) => {
-            const {
-                type,
-                fileUrl,
-                data,
-                offsetX,
-                offsetY,
-                zoom,
-                clipX,
-                clipY,
-                clipWidth,
-                clipHeight,
-                maxDetail,
-                version,
-                imageUrl,
-            } = e.data;
+            this.#worker.onmessage = async (e) => {
+                try {
+                    const {
+                        type,
+                        fileUrl,
+                        data,
+                        offsetX,
+                        offsetY,
+                        zoom,
+                        clipX,
+                        clipY,
+                        clipWidth,
+                        clipHeight,
+                        maxDetail,
+                        version,
+                        imageUrl,
+                    } = e.data;
 
-            switch (type) {
-                case "initComplete": {
-                    await this.#handleWorkerInitComplete();
-                    break;
-                }
-                case "setOffsetComplete":
-                    break;
-                case "saveOffsetComplete": {
-                    const downloadLink = document.createElement("a");
-                    downloadLink.href = fileUrl;
-                    downloadLink.download = "position.bin";
-                    downloadLink.click();
-                    break;
-                }
-                case "renderImage": {
-                    if (!this.#pushCache) {
-                        this.#pushCache = {};
+                    switch (type) {
+                        case "initComplete": {
+                            await this.#handleWorkerInitComplete();
+                            break;
+                        }
+                        case "setOffsetComplete":
+                            break;
+                        case "saveOffsetComplete": {
+                            const downloadLink = document.createElement("a");
+                            downloadLink.href = fileUrl;
+                            downloadLink.download = "position.bin";
+                            downloadLink.click();
+                            break;
+                        }
+                        case "renderImage": {
+                            if (!this.#pushCache) {
+                                this.#pushCache = {};
+                            }
+
+                            if (data) {
+                                if (this.#pushCache.data) {
+                                    this.#pushCache.data.close();
+                                }
+
+                                this.#pushCache = {
+                                    data,
+                                    clipX,
+                                    clipY,
+                                    clipWidth,
+                                    clipHeight,
+                                };
+
+                                this.#cachedPosition = new ClientPosition(
+                                    zoom,
+                                    offsetX,
+                                    offsetY,
+                                    this.width || 1,
+                                    this.height || 1
+                                );
+
+                                this.#positionVersion = version;
+
+                                if ((Number(version) & 1) == 1) {
+                                    this.#updateWorkerPosition();
+                                }
+
+                                {
+                                    const toTransform = data;
+
+                                    let effectiveToTransformWidth =
+                                        toTransform.width;
+                                    let effectiveToTransformHeight =
+                                        toTransform.height;
+
+                                    let scaleX =
+                                        this.width / effectiveToTransformWidth;
+
+                                    this.#displayCanvasBaseScale = scaleX;
+                                }
+                            }
+
+                            this.#renderWake();
+                            break;
+                        }
+                        case "makeImageComplete": {
+                            const downloadLink = document.createElement("a");
+                            downloadLink.href = imageUrl;
+                            downloadLink.download = "image.png";
+                            downloadLink.click();
+                            break;
+                        }
+                        case "zoomViewportComplete":
+                        case "moveViewportComplete":
+                        case "resizeViewportComplete":
+                        case "findImageComplete":
+                        case "updatePositionComplete":
+                        case "resetPositionComplete":
+                            break;
+                        default:
+                            console.error(
+                                "Unknown message type from worker:",
+                                type
+                            );
                     }
-
-                    if (data) {
-                        if (this.#pushCache.data) {
-                            this.#pushCache.data.close();
-                        }
-
-                        this.#pushCache = {
-                            data,
-                            clipX,
-                            clipY,
-                            clipWidth,
-                            clipHeight,
-                        };
-
-                        this.#cachedPosition = new ClientPosition(
-                            zoom,
-                            offsetX,
-                            offsetY,
-                            this.width || 1,
-                            this.height || 1
-                        );
-
-                        this.#positionVersion = version;
-
-                        if ((Number(version) & 1) == 1) {
-                            this.#updateWorkerPosition();
-                        }
-
-                        {
-                            const toTransform = data;
-
-                            let effectiveToTransformWidth = toTransform.width;
-                            let effectiveToTransformHeight = toTransform.height;
-
-                            // if (
-                            //     Math.abs(
-                            //         this.width / this.height -
-                            //             toTransform.width / toTransform.height
-                            //     ) > 0.00001
-                            // ) {
-                            //     if (
-                            //         this.width / this.height >
-                            //         toTransform.width / toTransform.height
-                            //     ) {
-                            //         effectiveToTransformWidth =
-                            //             toTransform.height *
-                            //             (this.width / this.height);
-                            //     } else {
-                            //         effectiveToTransformHeight =
-                            //             toTransform.width *
-                            //             (this.height / this.width);
-                            //     }
-                            // }
-
-                            let scaleX = this.width / effectiveToTransformWidth;
-
-                            // const transformX = 100 * scaleX;
-                            // const transformY = 100 * scaleX;
-
-                            // const transformX = 0;
-                            // const transformY = 0;
-
-                            // this.offsetX = -transformX;
-                            // this.offsetY = -transformY;
-
-                            this.#displayCanvasBaseScale = scaleX;
-                        }
-                    }
-
-                    this.#renderWake();
-                    break;
+                } catch (error) {
+                    console.error("Error handling worker message:", error);
+                    this.#showErrorMessage();
                 }
-                case "makeImageComplete": {
-                    const downloadLink = document.createElement("a");
-                    downloadLink.href = imageUrl;
-                    downloadLink.download = "image.png";
-                    downloadLink.click();
-                    break;
-                }
-                case "zoomViewportComplete":
-                case "moveViewportComplete":
-                case "resizeViewportComplete":
-                case "findImageComplete":
-                case "updatePositionComplete":
-                case "resetPositionComplete":
-                    break;
-                default:
-                    console.error("Unknown message type from worker:", type);
-            }
-        };
+            };
+
+            // Add error event listener to worker
+            this.#worker.onerror = (error) => {
+                console.error("Worker error:", error);
+                this.#showErrorMessage();
+            };
+        } catch (error) {
+            console.error("Error initializing worker:", error);
+            this.#showErrorMessage();
+        }
     }
 
     // Handle resize events
     #handleResize(clientWidth, clientHeight) {
-        const sizeMultiplier = 1;
+        try {
+            const sizeMultiplier = 1;
 
-        this.width = Math.floor(clientWidth * sizeMultiplier);
-        this.height = Math.floor(clientHeight * sizeMultiplier);
+            this.width = Math.floor(clientWidth * sizeMultiplier);
+            this.height = Math.floor(clientHeight * sizeMultiplier);
 
-        // No need to calculate offsets for centering in a square
-        // since we're using the full rectangular area
-        this.offsetX = (this.width - clientWidth) / 2;
-        this.offsetY = (this.height - clientHeight) / 2;
+            // No need to calculate offsets for centering in a square
+            // since we're using the full rectangular area
+            this.offsetX = (this.width - clientWidth) / 2;
+            this.offsetY = (this.height - clientHeight) / 2;
 
-        // Update position with actual dimensions
-        this.#cachedPosition.updateDimensions(clientWidth, clientHeight);
+            // Update position with actual dimensions
+            this.#cachedPosition.updateDimensions(clientWidth, clientHeight);
 
-        this.#renderWake();
+            this.#renderWake();
 
-        if (this.#workerInitialized) {
-            this.#updateWorkerPosition();
+            if (this.#workerInitialized) {
+                this.#updateWorkerPosition();
+            }
+        } catch (error) {
+            console.error("Error in handleResize:", error);
+            this.#showErrorMessage();
         }
     }
 
     // Handle worker initialization complete
     async #handleWorkerInitComplete() {
-        this.#updateWorkerPosition();
+        try {
+            this.#updateWorkerPosition();
 
-        this.#worker.postMessage({ type: "workCycle" });
+            this.#worker.postMessage({ type: "workCycle" });
 
-        this.#workerInitialized = true;
+            this.#workerInitialized = true;
+        } catch (error) {
+            console.error("Error in handleWorkerInitComplete:", error);
+            this.#showErrorMessage();
+        }
     }
 
     // Event handlers
     #handleWheel(event) {
-        event.preventDefault();
+        try {
+            event.preventDefault();
 
-        const scrollZoomFactor = Math.pow(
-            Math.pow(2, Math.pow(2, this.scrollZoomRate || 1)),
-            0.1
-        );
+            const scrollZoomFactor = Math.pow(
+                Math.pow(2, Math.pow(2, this.scrollZoomRate || 1)),
+                0.1
+            );
 
-        this.#cachedPosition.updatePosition(
-            event.offsetX + this.offsetX,
-            event.offsetY + this.offsetY,
-            event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
-        );
-
-        this.#updateWorkerPosition();
-
-        this.#renderWake();
-    }
-
-    #handlePointerDrag(event) {
-        event = event.detail;
-        if (!this.clickZoom) {
-            this.#cachedPosition.move(event.deltaX, event.deltaY);
+            this.#cachedPosition.updatePosition(
+                event.offsetX + this.offsetX,
+                event.offsetY + this.offsetY,
+                event.deltaY > 0 ? 1 / scrollZoomFactor : scrollZoomFactor
+            );
 
             this.#updateWorkerPosition();
 
             this.#renderWake();
+        } catch (error) {
+            console.error("Error in handleWheel:", error);
+            this.#showErrorMessage();
+        }
+    }
+
+    #handlePointerDrag(event) {
+        try {
+            event = event.detail;
+            if (!this.clickZoom) {
+                this.#cachedPosition.move(event.deltaX, event.deltaY);
+
+                this.#updateWorkerPosition();
+
+                this.#renderWake();
+            }
+        } catch (error) {
+            console.error("Error in handlePointerDrag:", error);
+            this.#showErrorMessage();
         }
     }
 
     #handlePointerZoom(event) {
-        event.preventDefault();
-        event = event.detail;
+        try {
+            event.preventDefault();
+            event = event.detail;
 
-        const scrollZoomFactor = event.scale;
+            const scrollZoomFactor = event.scale;
 
-        // this.#worker.postMessage({
-        //     type: "zoomViewport",
-        //     mouseX: event.offsetX + this.offsetX,
-        //     mouseY: event.offsetY + this.offsetY,
-        //     zoomDelta: scrollZoomFactor,
-        // });
+            this.#cachedPosition.updatePosition(
+                event.offsetX + this.offsetX,
+                event.offsetY + this.offsetY,
+                scrollZoomFactor
+            );
 
-        this.#cachedPosition.updatePosition(
-            event.offsetX + this.offsetX,
-            event.offsetY + this.offsetY,
-            scrollZoomFactor
-        );
+            this.#updateWorkerPosition();
 
-        this.#updateWorkerPosition();
-
-        this.#renderWake();
+            this.#renderWake();
+        } catch (error) {
+            console.error("Error in handlePointerZoom:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #handleMouseDown() {
-        this.#isMouseDown = true;
-        this.#lastMouseDownTime = performance.now();
-        if (this.clickZoom) {
-            this.#renderWake();
+        try {
+            this.#isMouseDown = true;
+            this.#lastMouseDownTime = performance.now();
+            if (this.clickZoom) {
+                this.#renderWake();
+            }
+        } catch (error) {
+            console.error("Error in handleMouseDown:", error);
+            this.#showErrorMessage();
         }
     }
 
     #handleMouseUp() {
-        this.#isMouseDown = false;
+        try {
+            this.#isMouseDown = false;
+        } catch (error) {
+            console.error("Error in handleMouseUp:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #handleMouseMove(event) {
-        this.#mouseX = event.offsetX;
-        this.#mouseY = event.offsetY;
+        try {
+            this.#mouseX = event.offsetX;
+            this.#mouseY = event.offsetY;
+        } catch (error) {
+            console.error("Error in handleMouseMove:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #handleTouchStart(event) {
-        event.preventDefault();
-        this.#isMouseDown = true;
-        this.#mouseX = event.touches[0].clientX;
-        this.#mouseY = event.touches[0].clientY;
-        if (this.clickZoom) {
-            this.#renderWake();
+        try {
+            event.preventDefault();
+            this.#isMouseDown = true;
+            this.#mouseX = event.touches[0].clientX;
+            this.#mouseY = event.touches[0].clientY;
+            if (this.clickZoom) {
+                this.#renderWake();
+            }
+        } catch (error) {
+            console.error("Error in handleTouchStart:", error);
+            this.#showErrorMessage();
         }
     }
 
     #handleTouchEnd(event) {
-        event.preventDefault();
-        this.#isMouseDown = false;
+        try {
+            event.preventDefault();
+            this.#isMouseDown = false;
+        } catch (error) {
+            console.error("Error in handleTouchEnd:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #handleTouchMove(event) {
-        event.preventDefault();
-        this.#mouseX = event.touches[0].clientX;
-        this.#mouseY = event.touches[0].clientY;
+        try {
+            event.preventDefault();
+            this.#mouseX = event.touches[0].clientX;
+            this.#mouseY = event.touches[0].clientY;
+        } catch (error) {
+            console.error("Error in handleTouchMove:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #handleKeyDown(event) {
-        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-        if (arrowKeys.includes(event.key)) {
-            event.preventDefault();
-            if (!this.#pressedKeys[event.key]) {
-                this.#keyPressStartTimes[event.key] = performance.now();
-                this.#pressedKeys[event.key] = true;
+        try {
+            const arrowKeys = [
+                "ArrowUp",
+                "ArrowDown",
+                "ArrowLeft",
+                "ArrowRight",
+            ];
+            if (arrowKeys.includes(event.key)) {
+                event.preventDefault();
+                if (!this.#pressedKeys[event.key]) {
+                    this.#keyPressStartTimes[event.key] = performance.now();
+                    this.#pressedKeys[event.key] = true;
+                }
+                this.#renderWake();
             }
-            this.#renderWake();
+        } catch (error) {
+            console.error("Error in handleKeyDown:", error);
+            this.#showErrorMessage();
         }
     }
 
     #handleKeyUp(event) {
-        const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-        if (arrowKeys.includes(event.key)) {
-            event.preventDefault();
-            this.#pressedKeys[event.key] = false;
-            this.#renderWake();
+        try {
+            const arrowKeys = [
+                "ArrowUp",
+                "ArrowDown",
+                "ArrowLeft",
+                "ArrowRight",
+            ];
+            if (arrowKeys.includes(event.key)) {
+                event.preventDefault();
+                this.#pressedKeys[event.key] = false;
+                this.#renderWake();
+            }
+        } catch (error) {
+            console.error("Error in handleKeyUp:", error);
+            this.#showErrorMessage();
         }
     }
 
     #pushImage() {
-        let data, offsetX, offsetY, zoom;
+        try {
+            let data, offsetX, offsetY, zoom;
 
-        let clipX, clipY, clipWidth, clipHeight;
+            let clipX, clipY, clipWidth, clipHeight;
 
-        if (this.#pushCache) {
-            data = this.#pushCache.data;
-            clipX = this.#pushCache.clipX;
-            clipY = this.#pushCache.clipY;
-            clipWidth = this.#pushCache.clipWidth;
-            clipHeight = this.#pushCache.clipHeight;
+            if (this.#pushCache) {
+                data = this.#pushCache.data;
+                clipX = this.#pushCache.clipX;
+                clipY = this.#pushCache.clipY;
+                clipWidth = this.#pushCache.clipWidth;
+                clipHeight = this.#pushCache.clipHeight;
 
-            this.#pushCache = undefined;
-        }
-
-        offsetX = this.#cachedPosition.offsetX - this.offsetX;
-        offsetY = this.#cachedPosition.offsetY - this.offsetY;
-        zoom = this.#cachedPosition.zoom;
-
-        if (this.#loading) {
-            if (!data) {
-                return;
+                this.#pushCache = undefined;
             }
 
-            this.#loading = false;
-            this.#canvasFadeIn();
-        }
+            offsetX = this.#cachedPosition.offsetX - this.offsetX;
+            offsetY = this.#cachedPosition.offsetY - this.offsetY;
+            zoom = this.#cachedPosition.zoom;
 
-        const startTime = performance.now();
+            if (this.#loading) {
+                if (!data) {
+                    return;
+                }
 
-        if (data) {
-            this.#displayCanvas.width = data.width;
-            this.#displayCanvas.height = data.height;
-            this.#displayCtx.transferFromImageBitmap(data);
+                this.#loading = false;
+                this.#canvasFadeIn();
+            }
 
-            this.#displayCanvas.style.clipPath = `xywh(${clipX}px ${clipY}px ${clipWidth}px ${clipHeight}px)`;
-        }
+            const startTime = performance.now();
 
-        this.#transformCanvas(
-            this.#displayCanvasParent,
+            if (data) {
+                this.#displayCanvas.width = data.width;
+                this.#displayCanvas.height = data.height;
+                this.#displayCtx.transferFromImageBitmap(data);
 
-            offsetX,
+                this.#displayCanvas.style.clipPath = `xywh(${clipX}px ${clipY}px ${clipWidth}px ${clipHeight}px)`;
+            }
 
-            offsetY,
+            this.#transformCanvas(
+                this.#displayCanvasParent,
+                offsetX,
+                offsetY,
+                zoom * this.#displayCanvasBaseScale
+            );
 
-            zoom * this.#displayCanvasBaseScale
-        );
-
-        const endTime = performance.now();
-        const totalTime = endTime - startTime;
-        if (totalTime > 3) {
-            console.log("render time:", totalTime);
+            const endTime = performance.now();
+            const totalTime = endTime - startTime;
+            if (totalTime > 3) {
+                console.log("render time:", totalTime);
+            }
+        } catch (error) {
+            console.error("Error in pushImage:", error);
+            this.#showErrorMessage();
         }
     }
 
     #transformCanvas(toTransform, offsetX, offsetY, zoom) {
-        toTransform.style.transform = `
-            matrix(
-                ${zoom},
-                0, 0,
-                ${zoom},
-                ${offsetX}, ${offsetY}
-            )
-        `;
+        try {
+            toTransform.style.transform = `
+                matrix(
+                    ${zoom},
+                    0, 0,
+                    ${zoom},
+                    ${offsetX}, ${offsetY}
+                )
+            `;
+        } catch (error) {
+            console.error("Error in transformCanvas:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
@@ -1216,41 +1372,51 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<void>}
      */
     async #canvasFadeIn() {
-        const animationDuration = 1000; // 1 second
-        const animationStartTime = performance.now();
+        try {
+            const animationDuration = 1000; // 1 second
+            const animationStartTime = performance.now();
 
-        if (this.#canvasFadingIn) {
-            return;
-        }
+            if (this.#canvasFadingIn) {
+                return;
+            }
 
-        this.#canvasFadingIn = true;
-        this.#canvasFadingOut = false;
+            this.#canvasFadingIn = true;
+            this.#canvasFadingOut = false;
 
-        const startingOpacity = Number(
-            this.#canvasLoadingAnimation.style.opacity
-        );
-
-        const animateOpacity = () => {
-            const currentTime = performance.now();
-            const elapsed = currentTime - animationStartTime;
-            const opacity = Math.max(
-                0,
-                startingOpacity - elapsed / animationDuration
+            const startingOpacity = Number(
+                this.#canvasLoadingAnimation.style.opacity
             );
 
-            this.#canvasLoadingAnimation.style.opacity = opacity;
+            const animateOpacity = () => {
+                try {
+                    const currentTime = performance.now();
+                    const elapsed = currentTime - animationStartTime;
+                    const opacity = Math.max(
+                        0,
+                        startingOpacity - elapsed / animationDuration
+                    );
 
-            if (opacity > 0 && this.#canvasFadingIn) {
-                requestAnimationFrame(animateOpacity);
-            } else {
-                if (opacity === 0) {
-                    this.#canvasLoadingAnimation.style.display = "none";
+                    this.#canvasLoadingAnimation.style.opacity = opacity;
+
+                    if (opacity > 0 && this.#canvasFadingIn) {
+                        requestAnimationFrame(animateOpacity);
+                    } else {
+                        if (opacity === 0) {
+                            this.#canvasLoadingAnimation.style.display = "none";
+                        }
+                        this.#canvasFadingIn = false;
+                    }
+                } catch (error) {
+                    console.error("Error in animateOpacity (fade in):", error);
+                    this.#showErrorMessage();
                 }
-                this.#canvasFadingIn = false;
-            }
-        };
+            };
 
-        animateOpacity();
+            animateOpacity();
+        } catch (error) {
+            console.error("Error in canvasFadeIn:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
@@ -1259,42 +1425,52 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<void>}
      */
     async #canvasFadeOut() {
-        const animationDuration = 1000; // 1 second
-        const animationStartTime = performance.now();
+        try {
+            const animationDuration = 1000; // 1 second
+            const animationStartTime = performance.now();
 
-        if (this.#canvasFadingOut) {
-            return;
-        }
+            if (this.#canvasFadingOut) {
+                return;
+            }
 
-        this.#canvasFadingIn = false;
-        this.#canvasFadingOut = true;
+            this.#canvasFadingIn = false;
+            this.#canvasFadingOut = true;
 
-        const startingOpacity = Number(
-            this.#canvasLoadingAnimation.style.opacity
-        );
-
-        if (startingOpacity === 0) {
-            this.#canvasLoadingAnimation.style.removeProperty("display");
-        }
-
-        const animateOpacity = () => {
-            const currentTime = performance.now();
-            const elapsed = currentTime - animationStartTime;
-            const opacity = Math.min(
-                1,
-                startingOpacity + elapsed / animationDuration
+            const startingOpacity = Number(
+                this.#canvasLoadingAnimation.style.opacity
             );
 
-            this.#canvasLoadingAnimation.style.opacity = opacity;
-
-            if (opacity < 1 && this.#canvasFadingOut) {
-                requestAnimationFrame(animateOpacity);
-            } else {
-                this.#canvasFadingOut = false;
+            if (startingOpacity === 0) {
+                this.#canvasLoadingAnimation.style.removeProperty("display");
             }
-        };
 
-        animateOpacity();
+            const animateOpacity = () => {
+                try {
+                    const currentTime = performance.now();
+                    const elapsed = currentTime - animationStartTime;
+                    const opacity = Math.min(
+                        1,
+                        startingOpacity + elapsed / animationDuration
+                    );
+
+                    this.#canvasLoadingAnimation.style.opacity = opacity;
+
+                    if (opacity < 1 && this.#canvasFadingOut) {
+                        requestAnimationFrame(animateOpacity);
+                    } else {
+                        this.#canvasFadingOut = false;
+                    }
+                } catch (error) {
+                    console.error("Error in animateOpacity (fade out):", error);
+                    this.#showErrorMessage();
+                }
+            };
+
+            animateOpacity();
+        } catch (error) {
+            console.error("Error in canvasFadeOut:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
@@ -1302,140 +1478,161 @@ class CanvasComponent extends HTMLElement {
      * @private
      */
     #startRenderLoop() {
-        this.#renderLoop = () => {
-            if (!this.#imageDirty) {
-                return;
-            }
-
-            this.#imageDirty = false;
-
-            const currentFrameTime = performance.now();
-
-            if (this.#workerInitialized) {
-                if (!this.#loading) {
-                    let positionChanged = false;
-
-                    // Handle click zoom with proper timing
-                    if (this.#isMouseDown && this.clickZoom) {
-                        // Calculate time since mouse was pressed down
-                        const mouseDeltaTime = Math.min(
-                            (currentFrameTime - this.#lastMouseDownTime) / 1000,
-                            0.1 // Cap at 100ms for stability while allowing smooth movement
-                        );
-
-                        // Update last mouse down time for next frame
-                        this.#lastMouseDownTime = currentFrameTime;
-
-                        const zoomFactor = Math.pow(
-                            Math.pow(2, Math.pow(2, this.clickZoomRate || 1)),
-                            mouseDeltaTime
-                        );
-
-                        this.#cachedPosition.updatePosition(
-                            this.#mouseX + this.offsetX,
-                            this.#mouseY + this.offsetY,
-                            zoomFactor
-                        );
-
-                        this.#imageDirty = true;
-
-                        positionChanged = true;
+        try {
+            this.#renderLoop = () => {
+                try {
+                    if (!this.#imageDirty) {
+                        return;
                     }
 
-                    // Handle arrow key movement with proper timing
-                    if (
-                        this.#pressedKeys["ArrowUp"] ||
-                        this.#pressedKeys["ArrowDown"] ||
-                        this.#pressedKeys["ArrowLeft"] ||
-                        this.#pressedKeys["ArrowRight"]
-                    ) {
-                        let offsetX = 0;
-                        let offsetY = 0;
-                        const arrowKeys = [
-                            "ArrowUp",
-                            "ArrowDown",
-                            "ArrowLeft",
-                            "ArrowRight",
-                        ];
+                    this.#imageDirty = false;
 
-                        for (const key of arrowKeys) {
-                            if (!this.#pressedKeys[key]) continue;
+                    const currentFrameTime = performance.now();
 
-                            // Calculate time since key was first pressed or last frame
-                            const keyDeltaTime = Math.min(
-                                (currentFrameTime -
-                                    (this.#keyPressStartTimes[key] ||
-                                        currentFrameTime)) /
-                                    1000,
-                                0.1 // Cap at 100ms for stability while allowing smooth movement
-                            );
+                    if (this.#workerInitialized) {
+                        if (!this.#loading) {
+                            let positionChanged = false;
 
-                            // Update time for next frame
-                            this.#keyPressStartTimes[key] = currentFrameTime;
+                            // Handle click zoom with proper timing
+                            if (this.#isMouseDown && this.clickZoom) {
+                                // Calculate time since mouse was pressed down
+                                const mouseDeltaTime = Math.min(
+                                    (currentFrameTime -
+                                        this.#lastMouseDownTime) /
+                                        1000,
+                                    0.1 // Cap at 100ms for stability while allowing smooth movement
+                                );
 
-                            // Adjust move speed based on canvas dimensions
-                            const moveSpeed =
-                                Math.min(this.width, this.height) *
-                                keyDeltaTime;
+                                // Update last mouse down time for next frame
+                                this.#lastMouseDownTime = currentFrameTime;
 
-                            if (key === "ArrowUp") {
-                                offsetY += moveSpeed;
-                            } else if (key === "ArrowDown") {
-                                offsetY -= moveSpeed;
-                            } else if (key === "ArrowLeft") {
-                                offsetX += moveSpeed;
-                            } else if (key === "ArrowRight") {
-                                offsetX -= moveSpeed;
+                                const zoomFactor = Math.pow(
+                                    Math.pow(
+                                        2,
+                                        Math.pow(2, this.clickZoomRate || 1)
+                                    ),
+                                    mouseDeltaTime
+                                );
+
+                                this.#cachedPosition.updatePosition(
+                                    this.#mouseX + this.offsetX,
+                                    this.#mouseY + this.offsetY,
+                                    zoomFactor
+                                );
+
+                                this.#imageDirty = true;
+
+                                positionChanged = true;
+                            }
+
+                            // Handle arrow key movement with proper timing
+                            if (
+                                this.#pressedKeys["ArrowUp"] ||
+                                this.#pressedKeys["ArrowDown"] ||
+                                this.#pressedKeys["ArrowLeft"] ||
+                                this.#pressedKeys["ArrowRight"]
+                            ) {
+                                let offsetX = 0;
+                                let offsetY = 0;
+                                const arrowKeys = [
+                                    "ArrowUp",
+                                    "ArrowDown",
+                                    "ArrowLeft",
+                                    "ArrowRight",
+                                ];
+
+                                for (const key of arrowKeys) {
+                                    if (!this.#pressedKeys[key]) continue;
+
+                                    // Calculate time since key was first pressed or last frame
+                                    const keyDeltaTime = Math.min(
+                                        (currentFrameTime -
+                                            (this.#keyPressStartTimes[key] ||
+                                                currentFrameTime)) /
+                                            1000,
+                                        0.1 // Cap at 100ms for stability while allowing smooth movement
+                                    );
+
+                                    // Update time for next frame
+                                    this.#keyPressStartTimes[key] =
+                                        currentFrameTime;
+
+                                    // Adjust move speed based on canvas dimensions
+                                    const moveSpeed =
+                                        Math.min(this.width, this.height) *
+                                        keyDeltaTime;
+
+                                    if (key === "ArrowUp") {
+                                        offsetY += moveSpeed;
+                                    } else if (key === "ArrowDown") {
+                                        offsetY -= moveSpeed;
+                                    } else if (key === "ArrowLeft") {
+                                        offsetX += moveSpeed;
+                                    } else if (key === "ArrowRight") {
+                                        offsetX -= moveSpeed;
+                                    }
+                                }
+
+                                if (offsetX !== 0 || offsetY !== 0) {
+                                    this.#cachedPosition.move(offsetX, offsetY);
+                                    this.#imageDirty = true;
+
+                                    positionChanged = true;
+                                }
+                            }
+
+                            if (positionChanged) {
+                                this.#updateWorkerPosition();
                             }
                         }
 
-                        if (offsetX !== 0 || offsetY !== 0) {
-                            this.#cachedPosition.move(offsetX, offsetY);
-                            this.#imageDirty = true;
-
-                            positionChanged = true;
-                        }
+                        this.#pushImage();
                     }
 
-                    if (positionChanged) {
-                        this.#updateWorkerPosition();
+                    if (this.#imageDirty) {
+                        requestAnimationFrame(this.#renderLoop);
                     }
+                } catch (error) {
+                    console.error("Error in render loop:", error);
+                    this.#showErrorMessage();
                 }
+            };
 
-                this.#pushImage();
-            }
-
-            if (this.#imageDirty) {
-                requestAnimationFrame(this.#renderLoop);
-            }
-        };
-
-        requestAnimationFrame(this.#renderLoop);
+            requestAnimationFrame(this.#renderLoop);
+        } catch (error) {
+            console.error("Error starting render loop:", error);
+            this.#showErrorMessage();
+        }
     }
 
     #updateWorkerPosition() {
-        if (this.#initializedWorkerPosition) {
-            this.#worker.postMessage({
-                type: "updatePosition",
-                offsetX: this.#cachedPosition.offsetX,
-                offsetY: this.#cachedPosition.offsetY,
-                zoom: this.#cachedPosition.zoom,
-                viewportWidth: this.width || 1,
-                viewportHeight: this.height || 1,
-                version: this.#positionVersion,
-            });
-        } else {
-            this.#canvasFadeOut();
+        try {
+            if (this.#initializedWorkerPosition) {
+                this.#worker.postMessage({
+                    type: "updatePosition",
+                    offsetX: this.#cachedPosition.offsetX,
+                    offsetY: this.#cachedPosition.offsetY,
+                    zoom: this.#cachedPosition.zoom,
+                    viewportWidth: this.width || 1,
+                    viewportHeight: this.height || 1,
+                    version: this.#positionVersion,
+                });
+            } else {
+                this.#canvasFadeOut();
 
-            this.#loading = true;
+                this.#loading = true;
 
-            this.#initializedWorkerPosition = true;
+                this.#initializedWorkerPosition = true;
 
-            this.#worker.postMessage({
-                type: "resetPosition",
-                viewportWidth: this.width || 1,
-                viewportHeight: this.height || 1,
-            });
+                this.#worker.postMessage({
+                    type: "resetPosition",
+                    viewportWidth: this.width || 1,
+                    viewportHeight: this.height || 1,
+                });
+            }
+        } catch (error) {
+            console.error("Error in updateWorkerPosition:", error);
+            this.#showErrorMessage();
         }
     }
 
@@ -1444,9 +1641,14 @@ class CanvasComponent extends HTMLElement {
      * @private
      */
     #renderWake() {
-        if (!this.#imageDirty) {
-            this.#imageDirty = true;
-            requestAnimationFrame(this.#renderLoop);
+        try {
+            if (!this.#imageDirty) {
+                this.#imageDirty = true;
+                requestAnimationFrame(this.#renderLoop);
+            }
+        } catch (error) {
+            console.error("Error in renderWake:", error);
+            this.#showErrorMessage();
         }
     }
 
@@ -1455,34 +1657,51 @@ class CanvasComponent extends HTMLElement {
      * @private
      */
     #cleanupResources() {
-        // Clean up pointer handler
-        if (this.#pointerHandler) {
-            this.#pointerHandler.destroy();
-        }
+        try {
+            // Clean up pointer handler
+            if (this.#pointerHandler) {
+                this.#pointerHandler.destroy();
+                this.#pointerHandler = null;
+            }
 
-        // Disconnect resize observer
-        if (this.#resizeObserver) {
-            this.#resizeObserver.disconnect();
-        }
+            // Disconnect resize observer
+            if (this.#resizeObserver) {
+                this.#resizeObserver.disconnect();
+                this.#resizeObserver = null;
+            }
 
-        // Remove event listeners
-        this.removeEventListener("wheel", this.addEventListener);
-        this.removeEventListener("pointerdrag", this.addEventListener);
-        this.removeEventListener("pointerzoom", this.addEventListener);
-        this.removeEventListener("mousedown", this.addEventListener);
-        this.removeEventListener("mouseup", this.addEventListener);
-        this.removeEventListener("mousemove", this.addEventListener);
-        this.removeEventListener("touchstart", this.addEventListener);
-        this.removeEventListener("touchend", this.addEventListener);
-        this.removeEventListener("touchmove", this.addEventListener);
+            // Remove event listeners
+            this.removeEventListener("wheel", this.addEventListener);
+            this.removeEventListener("pointerdrag", this.addEventListener);
+            this.removeEventListener("pointerzoom", this.addEventListener);
+            this.removeEventListener("mousedown", this.addEventListener);
+            this.removeEventListener("mouseup", this.addEventListener);
+            this.removeEventListener("mousemove", this.addEventListener);
+            this.removeEventListener("touchstart", this.addEventListener);
+            this.removeEventListener("touchend", this.addEventListener);
+            this.removeEventListener("touchmove", this.addEventListener);
 
-        document.removeEventListener("keydown", this.addEventListener);
-        document.removeEventListener("keyup", this.addEventListener);
+            document.removeEventListener("keydown", this.addEventListener);
+            document.removeEventListener("keyup", this.addEventListener);
 
-        // Terminate worker
-        if (this.#worker) {
-            this.#worker.terminate();
-            this.#worker = null;
+            // Close ImageBitmap if it exists
+            if (this.#pushCache && this.#pushCache.data) {
+                try {
+                    this.#pushCache.data.close();
+                } catch (e) {
+                    console.error("Error closing ImageBitmap:", e);
+                }
+                this.#pushCache = null;
+            }
+
+            // Terminate worker
+            if (this.#worker) {
+                this.#worker.terminate();
+                this.#worker = null;
+            }
+        } catch (error) {
+            console.error("Error cleaning up resources:", error);
+            // Don't call showErrorMessage here to avoid potential infinite loop
         }
     }
 
@@ -1493,16 +1712,26 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<Uint8Array>} The file contents as an array
      */
     async #readFileIntoArray(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const arrayBuffer = reader.result;
-                const uint8Array = new Uint8Array(arrayBuffer);
-                resolve(uint8Array);
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(file);
-        });
+        try {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const arrayBuffer = reader.result;
+                        const uint8Array = new Uint8Array(arrayBuffer);
+                        resolve(uint8Array);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        } catch (error) {
+            console.error("Error in readFileIntoArray:", error);
+            this.#showErrorMessage();
+            throw error;
+        }
     }
 
     /**
@@ -1512,17 +1741,29 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<HTMLImageElement>} The loaded image
      */
     async #loadImage(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const image = new Image();
-                image.onload = () => resolve(image);
-                image.onerror = reject;
-                image.src = reader.result;
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
+        try {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const image = new Image();
+                    image.onload = () => resolve(image);
+                    image.onerror = (e) => {
+                        console.error("Error loading image:", e);
+                        reject(e);
+                    };
+                    image.src = reader.result;
+                };
+                reader.onerror = (e) => {
+                    console.error("Error reading file:", e);
+                    reject(e);
+                };
+                reader.readAsDataURL(file);
+            });
+        } catch (error) {
+            console.error("Error in loadImage:", error);
+            this.#showErrorMessage();
+            throw error;
+        }
     }
 
     /**
@@ -1534,31 +1775,37 @@ class CanvasComponent extends HTMLElement {
      * @returns {HTMLCanvasElement} Canvas containing the resized image
      */
     #resizeImage(image, maxWidth, maxHeight) {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
+        try {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
 
-        // Calculate the new dimensions while maintaining aspect ratio
-        const aspectRatio = image.width / image.height;
+            // Calculate the new dimensions while maintaining aspect ratio
+            const aspectRatio = image.width / image.height;
 
-        let newWidth = maxWidth;
-        let newHeight = maxHeight;
+            let newWidth = maxWidth;
+            let newHeight = maxHeight;
 
-        if (aspectRatio > 1) {
-            // Landscape image (width is greater than height)
-            newHeight = maxWidth / aspectRatio;
-        } else {
-            // Portrait image or square (height is greater or equal to width)
-            newWidth = maxHeight * aspectRatio;
+            if (aspectRatio > 1) {
+                // Landscape image (width is greater than height)
+                newHeight = maxWidth / aspectRatio;
+            } else {
+                // Portrait image or square (height is greater or equal to width)
+                newWidth = maxHeight * aspectRatio;
+            }
+
+            // Set the canvas dimensions to the new size
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+
+            // Draw the resized image
+            ctx.drawImage(image, 0, 0, newWidth, newHeight);
+
+            return canvas;
+        } catch (error) {
+            console.error("Error in resizeImage:", error);
+            this.#showErrorMessage();
+            throw error;
         }
-
-        // Set the canvas dimensions to the new size
-        canvas.width = maxWidth;
-        canvas.height = maxHeight;
-
-        // Draw the resized image
-        ctx.drawImage(image, 0, 0, newWidth, newHeight);
-
-        return canvas;
     }
 
     /**
@@ -1568,8 +1815,14 @@ class CanvasComponent extends HTMLElement {
      * @returns {ImageData} The image data
      */
     #getImageData(canvas) {
-        const ctx = canvas.getContext("2d");
-        return ctx.getImageData(0, 0, canvas.width, canvas.height);
+        try {
+            const ctx = canvas.getContext("2d");
+            return ctx.getImageData(0, 0, canvas.width, canvas.height);
+        } catch (error) {
+            console.error("Error in getImageData:", error);
+            this.#showErrorMessage();
+            throw error;
+        }
     }
 
     /**
@@ -1606,7 +1859,7 @@ class CanvasComponent extends HTMLElement {
             this.#canvasFadeOut();
             this.#loading = true;
 
-            await new Promise((resolve) => {
+            await new Promise((resolve, reject) => {
                 const handleWorkerMessage = (e) => {
                     if (e.data.type === "findImageComplete") {
                         this.#worker.removeEventListener(
@@ -1616,14 +1869,26 @@ class CanvasComponent extends HTMLElement {
                         resolve();
                     }
                 };
+
                 this.#worker.addEventListener("message", handleWorkerMessage);
+                this.#worker.addEventListener("error", (error) => {
+                    console.error("Worker error during searchImage:", error);
+                    this.#worker.removeEventListener(
+                        "message",
+                        handleWorkerMessage
+                    );
+                    this.#showErrorMessage();
+                    reject(error);
+                });
+
                 this.#worker.postMessage({
                     type: "findImage",
                     findImageData: imageData,
                 });
             });
         } catch (error) {
-            console.error("Error processing file:", error);
+            console.error("Error in searchImage:", error);
+            this.#showErrorMessage();
         }
     }
 
@@ -1634,28 +1899,47 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<void>}
      */
     async loadFile(file) {
-        const fileInputContents = await this.#readFileIntoArray(file);
+        try {
+            const fileInputContents = await this.#readFileIntoArray(file);
 
-        if (fileInputContents && fileInputContents.length >= 1) {
-            this.#canvasFadeOut();
-            this.#loading = true;
+            if (fileInputContents && fileInputContents.length >= 1) {
+                this.#canvasFadeOut();
+                this.#loading = true;
 
-            await new Promise((resolve) => {
-                const handleWorkerMessage = (e) => {
-                    if (e.data.type === "setOffsetComplete") {
+                await new Promise((resolve, reject) => {
+                    const handleWorkerMessage = (e) => {
+                        if (e.data.type === "setOffsetComplete") {
+                            this.#worker.removeEventListener(
+                                "message",
+                                handleWorkerMessage
+                            );
+                            resolve();
+                        }
+                    };
+
+                    this.#worker.addEventListener(
+                        "message",
+                        handleWorkerMessage
+                    );
+                    this.#worker.addEventListener("error", (error) => {
+                        console.error("Worker error during loadFile:", error);
                         this.#worker.removeEventListener(
                             "message",
                             handleWorkerMessage
                         );
-                        resolve();
-                    }
-                };
-                this.#worker.addEventListener("message", handleWorkerMessage);
-                this.#worker.postMessage({
-                    type: "setOffset",
-                    offsetArray: fileInputContents,
+                        this.#showErrorMessage();
+                        reject(error);
+                    });
+
+                    this.#worker.postMessage({
+                        type: "setOffset",
+                        offsetArray: fileInputContents,
+                    });
                 });
-            });
+            }
+        } catch (error) {
+            console.error("Error in loadFile:", error);
+            this.#showErrorMessage();
         }
     }
 
@@ -1665,21 +1949,37 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<void>}
      */
     async savePosition() {
-        return new Promise((resolve) => {
-            const handleWorkerMessage = (e) => {
-                if (e.data.type === "saveOffsetComplete") {
+        try {
+            return new Promise((resolve, reject) => {
+                const handleWorkerMessage = (e) => {
+                    if (e.data.type === "saveOffsetComplete") {
+                        this.#worker.removeEventListener(
+                            "message",
+                            handleWorkerMessage
+                        );
+                        resolve();
+                    }
+                };
+
+                this.#worker.addEventListener("message", handleWorkerMessage);
+                this.#worker.addEventListener("error", (error) => {
+                    console.error("Worker error during savePosition:", error);
                     this.#worker.removeEventListener(
                         "message",
                         handleWorkerMessage
                     );
-                    resolve();
-                }
-            };
-            this.#worker.addEventListener("message", handleWorkerMessage);
-            this.#worker.postMessage({
-                type: "saveOffset",
+                    this.#showErrorMessage();
+                    reject(error);
+                });
+
+                this.#worker.postMessage({
+                    type: "saveOffset",
+                });
             });
-        });
+        } catch (error) {
+            console.error("Error in savePosition:", error);
+            this.#showErrorMessage();
+        }
     }
 
     /**
@@ -1689,35 +1989,51 @@ class CanvasComponent extends HTMLElement {
      * @returns {Promise<void>}
      */
     async saveImage(resolution) {
-        if (!resolution) {
-            resolution = 1024;
-        } else {
-            // Check if resolution is a power of 2
-            const isPowerOf2 = (num) => Math.log2(num) % 1 === 0;
-            if (!isPowerOf2(resolution)) {
-                console.warn(
-                    "Resolution must be a power of 2. Defaulting to 1024."
-                );
+        try {
+            if (!resolution) {
                 resolution = 1024;
+            } else {
+                // Check if resolution is a power of 2
+                const isPowerOf2 = (num) => Math.log2(num) % 1 === 0;
+                if (!isPowerOf2(resolution)) {
+                    console.warn(
+                        "Resolution must be a power of 2. Defaulting to 1024."
+                    );
+                    resolution = 1024;
+                }
             }
-        }
 
-        return new Promise((resolve) => {
-            const handleWorkerMessage = (e) => {
-                if (e.data.type === "makeImageComplete") {
+            return new Promise((resolve, reject) => {
+                const handleWorkerMessage = (e) => {
+                    if (e.data.type === "makeImageComplete") {
+                        this.#worker.removeEventListener(
+                            "message",
+                            handleWorkerMessage
+                        );
+                        resolve();
+                    }
+                };
+
+                this.#worker.addEventListener("message", handleWorkerMessage);
+                this.#worker.addEventListener("error", (error) => {
+                    console.error("Worker error during saveImage:", error);
                     this.#worker.removeEventListener(
                         "message",
                         handleWorkerMessage
                     );
-                    resolve();
-                }
-            };
-            this.#worker.addEventListener("message", handleWorkerMessage);
-            this.#worker.postMessage({
-                type: "makeImage",
-                imageSquareSize: resolution,
+                    this.#showErrorMessage();
+                    reject(error);
+                });
+
+                this.#worker.postMessage({
+                    type: "makeImage",
+                    imageSquareSize: resolution,
+                });
             });
-        });
+        } catch (error) {
+            console.error("Error in saveImage:", error);
+            this.#showErrorMessage();
+        }
     }
 }
 

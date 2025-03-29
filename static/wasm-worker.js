@@ -6,6 +6,15 @@ let dataBitmap;
 
 let pollingBitmap = false;
 
+// Simple function to propagate unhandled promise errors
+const propagatePromiseErrors = (promise) => {
+    return promise.catch((error) => {
+        setTimeout(() => {
+            throw error;
+        }, 0);
+    });
+};
+
 const env = {
     fillImageBitmap: (dataPtr, width, height) => {
         const data = new Uint8ClampedArray(
@@ -15,29 +24,33 @@ const env = {
         const imageData = new ImageData(data, width, height);
 
         pollingBitmap = true;
-        setTimeout(async () => {
-            const startTime = performance.now();
+        setTimeout(() => {
+            propagatePromiseErrors(
+                (async () => {
+                    const startTime = performance.now();
 
-            // const options = {
-            //     resizeWidth: 2048,
-            //     resizeHeight: 2048,
-            //     resizeQuality: "pixelated",
-            // };
+                    // const options = {
+                    //     resizeWidth: 2048,
+                    //     resizeHeight: 2048,
+                    //     resizeQuality: "pixelated",
+                    // };
 
-            const newDataBitmap = await createImageBitmap(imageData);
+                    const newDataBitmap = await createImageBitmap(imageData);
 
-            if (dataBitmap) {
-                dataBitmap.close();
-            }
+                    if (dataBitmap) {
+                        dataBitmap.close();
+                    }
 
-            dataBitmap = newDataBitmap;
+                    dataBitmap = newDataBitmap;
 
-            pollingBitmap = false;
+                    pollingBitmap = false;
 
-            const endTime = performance.now();
-            const executionTime = endTime - startTime;
+                    const endTime = performance.now();
+                    const executionTime = endTime - startTime;
 
-            // console.log(`Execution time: ${executionTime} milliseconds`);
+                    // console.log(`Execution time: ${executionTime} milliseconds`);
+                })()
+            );
         }, 0);
     },
 
@@ -122,25 +135,26 @@ const env = {
     },
 };
 
-fetch("example.wasm", { headers: { "Content-Type": "application/wasm" } })
-    .then((response) => {
-        if (!response.ok) {
-            throw new Error(`Failed to load WASM file: ${response.statusText}`);
-        }
-        return response.arrayBuffer();
-    })
-    .then((bytes) => WebAssembly.instantiate(bytes, { env }))
-    .then((results) => {
-        exports = results.instance.exports;
-        memory = exports.memory;
+propagatePromiseErrors(
+    fetch("example.wasm", { headers: { "Content-Type": "application/wasm" } })
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to load WASM file: ${response.statusText}`
+                );
+            }
+            return response.arrayBuffer();
+        })
+        .then((bytes) => WebAssembly.instantiate(bytes, { env }))
+        .then((results) => {
+            exports = results.instance.exports;
+            memory = exports.memory;
 
-        exports.init();
+            exports.init();
 
-        self.postMessage({ type: "initComplete" });
-    })
-    .catch((error) => {
-        console.error("Error loading or instantiating WASM:", error);
-    });
+            self.postMessage({ type: "initComplete" });
+        })
+);
 
 self.onmessage = function (e) {
     const {
@@ -270,11 +284,12 @@ self.onmessage = function (e) {
             const ctx = canvas.getContext("2d");
             ctx.putImageData(imageData, 0, 0);
 
-            // Convert the canvas to a blob and create a download URL
-            canvas.convertToBlob({ type: "image/png" }).then((blob) => {
-                const imageUrl = URL.createObjectURL(blob);
-                self.postMessage({ type: "makeImageComplete", imageUrl });
-            });
+            propagatePromiseErrors(
+                canvas.convertToBlob({ type: "image/png" }).then((blob) => {
+                    const imageUrl = URL.createObjectURL(blob);
+                    self.postMessage({ type: "makeImageComplete", imageUrl });
+                })
+            );
 
             exports.freeImage(imageBytes, imageSquareSize);
 
@@ -282,7 +297,7 @@ self.onmessage = function (e) {
         }
 
         case "workCycle": {
-            workCycleLoop();
+            propagatePromiseErrors(workCycleLoop());
 
             break;
         }
@@ -293,7 +308,10 @@ self.onmessage = function (e) {
 };
 
 const channel = new MessageChannel();
-channel.port1.onmessage = workCycleLoop;
+
+channel.port1.onmessage = () => {
+    propagatePromiseErrors(workCycleLoop());
+};
 
 let workCycleSleepTime = 1;
 async function workCycleLoop() {
@@ -315,7 +333,9 @@ async function workCycleLoop() {
 
         const prevWorkCycleSleepTime = workCycleSleepTime;
         workCycleSleepTime = Math.min(workCycleSleepTime * 2, 100);
-        setTimeout(workCycleLoop, prevWorkCycleSleepTime);
+        setTimeout(() => {
+            propagatePromiseErrors(workCycleLoop());
+        }, prevWorkCycleSleepTime);
     } else {
         workCycleSleepTime = 1;
         channel.port2.postMessage("");
