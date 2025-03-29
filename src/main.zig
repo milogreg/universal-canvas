@@ -1324,42 +1324,56 @@ export fn getOffsetFree() void {
 export fn makeImage(square_size: usize) [*]render.Color {
     std.debug.assert(std.math.isPowerOfTwo(square_size));
 
+    if (state_tree.diffToMinX() == 0 and state_tree.diffToMinY() == 0) {
+        return makeRootImage(square_size);
+    }
+
     const image = allocator.alloc(render.Color, square_size * square_size) catch @panic("OOM");
 
-    const output_color_chunks_backing = allocator.alloc([]render.Color, square_size * 2) catch @panic("OOM");
+    const max_width = @min(square_size, state_tree.diffToMaxX() +| 1);
+    const max_height = @min(square_size, state_tree.diffToMaxY() +| 1);
 
-    const sub_square_size = square_size / 2;
-
-    var output_color_chunks: [4][][]render.Color = undefined;
-
-    for (&output_color_chunks, 0..) |*output_color_chunk, i| {
-        output_color_chunk.* = output_color_chunks_backing[i * sub_square_size .. (i + 1) * sub_square_size];
+    if (max_width != square_size or max_height != square_size) {
+        @memset(image, .{
+            .r = 0,
+            .g = 0,
+            .b = 0,
+            .a = 0,
+        });
     }
 
-    for (&output_color_chunks, 0..) |output_color_chunk, i| {
-        const x_offset = (i & 1) * sub_square_size;
-        const y_offset = (i >> 1) * sub_square_size;
+    const output_colors: [][]render.Color = allocator.alloc([]render.Color, max_height) catch @panic("OOM");
+    defer allocator.free(output_colors);
 
-        for (0..square_size / 2) |y| {
-            const offset_x = x_offset;
-            const offset_y = y + y_offset;
-
-            const start_idx = offset_y * (square_size) + offset_x;
-
-            output_color_chunk[y] = image[start_idx .. start_idx + sub_square_size];
-        }
+    for (output_colors, 0..) |*output_colors_row, i| {
+        output_colors_row.* = image[i * square_size ..][0..max_width];
     }
 
-    for (0..4) |i| {
-        digitIncrement(@intCast(i));
+    render.fillRect(allocator, &state_tree, output_colors) catch @panic("OOM");
 
-        var iteration_state = render.FillIterationState.init(allocator, sub_square_size, state_tree.digits, state_tree.endingState() catch @panic("OOM"), output_color_chunks[i]) catch @panic("OOM");
-        defer iteration_state.deinit();
+    return image.ptr;
+}
 
-        while (iteration_state.iterate(100000)) {}
+fn makeRootImage(square_size: usize) [*]render.Color {
+    std.debug.assert(std.math.isPowerOfTwo(square_size));
 
-        digitDecrement(@intCast(i));
+    var state_stems_temp = render.StateStems.init(allocator, root_color) catch @panic("OOM");
+    defer state_stems_temp.deinit();
+
+    for (0..std.math.log2(square_size)) |_| {
+        state_stems_temp.appendDigit(0) catch @panic("OOM");
     }
+
+    const image = allocator.alloc(render.Color, square_size * square_size) catch @panic("OOM");
+
+    const output_colors: [][]render.Color = allocator.alloc([]render.Color, square_size) catch @panic("OOM");
+    defer allocator.free(output_colors);
+
+    for (output_colors, 0..) |*output_colors_row, i| {
+        output_colors_row.* = image[i * square_size ..][0..square_size];
+    }
+
+    render.fillRect(allocator, &state_stems_temp, output_colors) catch @panic("OOM");
 
     return image.ptr;
 }
