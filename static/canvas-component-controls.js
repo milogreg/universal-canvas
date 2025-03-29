@@ -316,26 +316,6 @@ class CanvasComponentControls extends HTMLElement {
                 
                 <div class="layout-container">
                     <div class="controls-container">
-                        <!-- Zoom controls -->
-                        <div class="control-group">
-                            <label class="control-group-label">Zoom Settings</label>
-                            <div class="spacer-1"></div>
-                            <div>
-                                <label for="zoom-rate-input">Click zoom rate:</label>
-                                <input type="range" id="zoom-rate-input" min="-3" max="5" step="any" value="1">
-                            </div>
-                            <div class="spacer-1"></div>
-                            <div>
-                                <label for="scroll-zoom-rate-input">Scroll zoom rate:</label>
-                                <input type="range" id="scroll-zoom-rate-input" min="-3" max="5" step="any" value="1">
-                            </div>
-                            <div class="spacer-1"></div>
-                            <div>
-                                <label for="click-zoom-toggle">Click to Zoom:</label>
-                                <input type="checkbox" id="click-zoom-toggle">
-                            </div>
-                        </div>
-                        
                         <!-- Image search -->
                         <div class="control-group">
                             <label class="control-group-label">Image Search</label>
@@ -359,21 +339,7 @@ class CanvasComponentControls extends HTMLElement {
                                 </select>
                             </div>
                         </div>
-                        
-                        <!-- Position controls -->
-                        <div class="control-group">
-                            <label class="control-group-label">Position Controls</label>
-                            <div class="spacer-1"></div>
-                            <div class="file-upload-container">
-                                <input type="file" id="file-input">
-                                <label for="file-input" id="position-file-label" class="file-upload-label">
-                                    Select position file
-                                </label>
-                            </div>
-                            <div class="spacer-1"></div>
-                            <button id="save-offset">Save Position</button>
-                        </div>
-                        
+
                         <!-- Save image -->
                         <div class="control-group">
                             <label class="control-group-label">Save Image</label>
@@ -391,6 +357,40 @@ class CanvasComponentControls extends HTMLElement {
                             </div>
                             <div class="spacer-1"></div>
                             <button id="save-image-button">Save Image</button>
+                        </div>
+
+                        <!-- Zoom controls -->
+                        <div class="control-group">
+                            <label class="control-group-label">Zoom Settings</label>
+                            <div class="spacer-1"></div>
+                            <div>
+                                <label for="zoom-rate-input">Click zoom rate:</label>
+                                <input type="range" id="zoom-rate-input" min="-3" max="5" step="any" value="1">
+                            </div>
+                            <div class="spacer-1"></div>
+                            <div>
+                                <label for="scroll-zoom-rate-input">Scroll zoom rate:</label>
+                                <input type="range" id="scroll-zoom-rate-input" min="-3" max="5" step="any" value="1">
+                            </div>
+                            <div class="spacer-1"></div>
+                            <div>
+                                <label for="click-zoom-toggle">Click to Zoom:</label>
+                                <input type="checkbox" id="click-zoom-toggle">
+                            </div>
+                        </div>
+                        
+                        <!-- Position controls -->
+                        <div class="control-group">
+                            <label class="control-group-label">Position Controls</label>
+                            <div class="spacer-1"></div>
+                            <div class="file-upload-container">
+                                <input type="file" id="file-input">
+                                <label for="file-input" id="position-file-label" class="file-upload-label">
+                                    Select position file
+                                </label>
+                            </div>
+                            <div class="spacer-1"></div>
+                            <button id="save-offset">Save Position</button>
                         </div>
                     </div>
                     
