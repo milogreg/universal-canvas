@@ -2,14 +2,22 @@
 
 /**
  * @typedef {Object} Point
- * @property {number} x - The x coordinate
- * @property {number} y - The y coordinate
+ * @property {number} x
+ * @property {number} y
  */
 
 /**
  * @typedef {Object} OffsetInfo
- * @property {number} offsetX - The x offset
- * @property {number} offsetY - The y offset
+ * @property {number} offsetX
+ * @property {number} offsetY
+ */
+
+/**
+ * @typedef {Object} VelocityEntry
+ * @property {number} time
+ * @property {number} velX
+ * @property {number} velY
+ * @property {number} velScale
  */
 
 /**
@@ -32,10 +40,9 @@ class PointerManager {
     }
 
     /**
-     * Adds a new pointer to the manager
-     * @param {number} id - Pointer identifier
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
+     * @param {number} id
+     * @param {number} x
+     * @param {number} y
      */
     addPointer(id, x, y) {
         this.pointers.set(id, { x, y });
@@ -43,10 +50,9 @@ class PointerManager {
     }
 
     /**
-     * Updates an existing pointer's position
-     * @param {number} id - Pointer identifier
-     * @param {number} x - New X coordinate
-     * @param {number} y - New Y coordinate
+     * @param {number} id
+     * @param {number} x
+     * @param {number} y
      */
     updatePointer(id, x, y) {
         if (this.pointers.has(id)) {
@@ -55,8 +61,7 @@ class PointerManager {
     }
 
     /**
-     * Removes a pointer from the manager
-     * @param {number} id - Pointer identifier to remove
+     * @param {number} id
      */
     removePointer(id) {
         this.pointers.delete(id);
@@ -64,16 +69,14 @@ class PointerManager {
     }
 
     /**
-     * Gets the current number of active pointers
-     * @returns {number} The count of active pointers
+     * @returns {number}
      */
     getPointerCount() {
         return this.pointers.size;
     }
 
     /**
-     * Calculates the centroid (average position) of all active pointers
-     * @returns {Point|null} The centroid point or null if no pointers
+     * @returns {Point|null}
      */
     calculateCentroid() {
         const points = Array.from(this.pointers.values());
@@ -91,9 +94,8 @@ class PointerManager {
     }
 
     /**
-     * Calculates the average distance of all pointers from a centroid
-     * @param {Point|null} centroid - The centroid point
-     * @returns {number} The average distance from the centroid
+     * @param {Point|null} centroid
+     * @returns {number}
      */
     calculateAverageDistance(centroid) {
         if (!centroid) return 0;
@@ -125,9 +127,8 @@ class PointerManager {
     }
 
     /**
-     * Gets the offset between the reference centroid and a new centroid
-     * @param {Point|null} newCentroid - The new centroid to compare against
-     * @returns {OffsetInfo} The x and y offsets
+     * @param {Point|null} newCentroid
+     * @returns {OffsetInfo}
      */
     getOffsets(newCentroid) {
         if (!this.referenceCentroid || !newCentroid)
@@ -139,9 +140,8 @@ class PointerManager {
     }
 
     /**
-     * Calculates the scale factor based on pointer movement from the reference centroid
-     * @param {Point|null} newCentroid - The new centroid
-     * @returns {number} The scale factor
+     * @param {Point|null} newCentroid
+     * @returns {number}
      */
     getScale(newCentroid) {
         if (this.pointers.size < 2) return 1;
@@ -154,14 +154,6 @@ class PointerManager {
         return scale;
     }
 }
-
-/**
- * @typedef {Object} VelocityEntry
- * @property {number} time - Timestamp of the entry
- * @property {number} velX - X velocity
- * @property {number} velY - Y velocity
- * @property {number} velScale - Scale velocity
- */
 
 /**
  * Handles pointer events and momentum calculations for drag and zoom operations
@@ -195,9 +187,8 @@ class PointerHandler {
     lastTime;
 
     /**
-     * Creates a new PointerHandler
-     * @param {HTMLElement} element - The DOM element to attach the handler to
-     * @param {number} [friction=0.99] - Friction coefficient for momentum calculations
+     * @param {HTMLElement} element
+     * @param {number} [friction=0.99]
      */
     constructor(element, friction = 0.99) {
         this.element = element;
@@ -225,8 +216,7 @@ class PointerHandler {
     }
 
     /**
-     * Handles pointer down events
-     * @param {PointerEvent} event - The pointer down event
+     * @param {PointerEvent} event
      */
     handlePointerDown(event) {
         this.pointerManager.addPointer(
@@ -238,8 +228,7 @@ class PointerHandler {
     }
 
     /**
-     * Handles pointer move events
-     * @param {PointerEvent} event - The pointer move event
+     * @param {PointerEvent} event
      */
     handlePointerMove(event) {
         this.pointerManager.updatePointer(
@@ -306,8 +295,7 @@ class PointerHandler {
     }
 
     /**
-     * Handles pointer up events
-     * @param {PointerEvent} event - The pointer up event
+     * @param {PointerEvent} event
      */
     handlePointerUp(event) {
         this.pointerManager.removePointer(event.pointerId);
@@ -320,8 +308,7 @@ class PointerHandler {
     }
 
     /**
-     * Cleans up old entries from the velocity history
-     * @param {number} currentTime - The current timestamp
+     * @param {number} currentTime
      */
     cleanVelocityHistory(currentTime) {
         while (
@@ -408,9 +395,8 @@ class PointerHandler {
         this.lastTime = now;
 
         /**
-         * Applies friction to a velocity value
-         * @param {number} v - The velocity value
-         * @returns {number} The velocity after applying friction
+         * @param {number} v
+         * @returns {number}
          */
         const applyFriction = (v) => {
             const newV = v * this.friction ** (deltaTime * 1000);
@@ -488,12 +474,11 @@ class ClientPosition {
     canvasHeight;
 
     /**
-     * Creates a new ClientPosition
-     * @param {number} zoom - Initial zoom level
-     * @param {number} offsetX - Initial X offset
-     * @param {number} offsetY - Initial Y offset
-     * @param {number} canvasWidth - Canvas width
-     * @param {number} canvasHeight - Canvas height
+     * @param {number} zoom
+     * @param {number} offsetX
+     * @param {number} offsetY
+     * @param {number} canvasWidth
+     * @param {number} canvasHeight
      */
     constructor(zoom, offsetX, offsetY, canvasWidth, canvasHeight) {
         this.zoom = zoom;
@@ -504,10 +489,9 @@ class ClientPosition {
     }
 
     /**
-     * Updates position based on mouse position and zoom delta
-     * @param {number} mouseX - Mouse X position
-     * @param {number} mouseY - Mouse Y position
-     * @param {number} zoomDelta - Zoom change factor
+     * @param {number} mouseX
+     * @param {number} mouseY
+     * @param {number} zoomDelta
      */
     updatePosition(mouseX, mouseY, zoomDelta) {
         this.zoom *= zoomDelta;
@@ -516,9 +500,8 @@ class ClientPosition {
     }
 
     /**
-     * Moves the position by the specified offset
-     * @param {number} offsetX - X offset to move by
-     * @param {number} offsetY - Y offset to move by
+     * @param {number} offsetX
+     * @param {number} offsetY
      */
     move(offsetX, offsetY) {
         this.offsetX += offsetX;
@@ -526,9 +509,8 @@ class ClientPosition {
     }
 
     /**
-     * Updates canvas dimensions while maintaining relative position
-     * @param {number} canvasWidth - New canvas width
-     * @param {number} canvasHeight - New canvas height
+     * @param {number} canvasWidth
+     * @param {number} canvasHeight
      */
     updateDimensions(canvasWidth, canvasHeight) {
         if (
@@ -554,7 +536,7 @@ class ClientPosition {
 
 /**
  * @typedef {Object} PushCacheData
- * @property {ImageBitmap|null} data - Main image bitmap
+ * @property {ImageBitmap|null} data
  * @property {number} clipX
  * @property {number} clipY
  * @property {number} clipWidth
@@ -562,31 +544,31 @@ class ClientPosition {
  */
 
 /**
- * A custom web component that displays a canvas with pan and zoom capabilities
+ * Displays a canvas with pan and zoom capabilities
  * @extends HTMLElement
  */
 class CanvasComponent extends HTMLElement {
     // Public properties
-    /** @type {number} Zoom rate for click-based zooming */
+    /** @type {number} */
     clickZoomRate = 1;
 
-    /** @type {number} Zoom rate for scroll-based zooming */
+    /** @type {number} */
     scrollZoomRate = 1;
 
-    /** @type {boolean} Whether click-to-zoom is enabled */
+    /** @type {boolean} */
     clickZoom = false;
 
     // Private fields
-    /** @type {Worker|null} Web worker for processing */
+    /** @type {Worker|null} */
     #worker = null;
 
-    /** @type {PointerHandler|null} Handler for pointer events */
+    /** @type {PointerHandler|null} */
     #pointerHandler = null;
 
-    /** @type {ResizeObserver|null} Observer for size changes */
+    /** @type {ResizeObserver|null} */
     #resizeObserver = null;
 
-    /** @type {ClientPosition|null} Current position information */
+    /** @type {ClientPosition|null} */
     #cachedPosition = {
         zoom: 1,
         offsetX: 0,
@@ -598,72 +580,69 @@ class CanvasComponent extends HTMLElement {
     /** @type {boolean} */
     #initializedWorkerPosition = false;
 
-    /** @type {PushCacheData|null} Cache for image data */
+    /** @type {PushCacheData|null} */
     #pushCache = null;
 
-    /** @type {boolean} Whether the component is loading */
+    /** @type {boolean} */
     #loading = true;
 
-    /** @type {boolean} Whether the image needs to be redrawn */
+    /** @type {boolean} */
     #imageDirty = true;
 
-    /** @type {boolean} Whether the worker has been initialized */
+    /** @type {boolean} */
     #workerInitialized = false;
 
-    /** @type {boolean} Whether canvas fade-in animation is active */
+    /** @type {boolean} */
     #canvasFadingIn = false;
 
-    /** @type {boolean} Whether canvas fade-out animation is active */
+    /** @type {boolean} */
     #canvasFadingOut = false;
 
-    /** @type {Object.<string, boolean>} Map of currently pressed keys */
+    /** @type {Object.<string, boolean>} */
     #pressedKeys = {};
 
-    /** @type {HTMLCanvasElement|null} Main display canvas */
+    /** @type {HTMLCanvasElement|null} */
     #displayCanvas = null;
 
-    /** @type {ImageBitmapRenderingContext|null} Context for main canvas */
+    /** @type {ImageBitmapRenderingContext|null} */
     #displayCtx = null;
 
-    /** @type {HTMLDivElement|null} Main display canvas parent */
+    /** @type {HTMLDivElement|null} */
     #displayCanvasParent = null;
 
     /** @type {number} */
     #displayCanvasBaseScale = 1;
 
-    /** @type {HTMLDivElement|null} Loading animation element */
+    /** @type {HTMLDivElement|null} */
     #canvasLoadingAnimation = null;
 
-    /** @type {Function|null} Render loop callback */
+    /** @type {Function|null} */
     #renderLoop = null;
 
-    /** @type {boolean} Whether mouse is currently pressed */
+    /** @type {boolean} */
     #isMouseDown = false;
 
-    /** @type {number} Current mouse X position */
+    /** @type {number} */
     #mouseX = 0;
 
-    /** @type {number} Current mouse Y position */
+    /** @type {number} */
     #mouseY = 0;
 
-    /** @type {number} Timestamp of last mouse down event */
+    /** @type {number} */
     #lastMouseDownTime = 0;
 
-    /** @type {Object.<string, number>} Map of key press start times */
+    /** @type {Object.<string, number>} */
     #keyPressStartTimes = {};
 
-    /** @type {number} Integer version number of position, used to coordinate with worker */
+    /** @type {number} */
     #positionVersion = 0n;
 
-    /** @type {boolean} Whether an error has occurred */
+    /** @type {boolean} */
     #hasError = false;
 
-    /** @type {HTMLDivElement|null} Error message element */
+    /** @type {HTMLDivElement|null} */
     #errorMessageElement = null;
 
-    /**
-     * Creates a new CanvasComponent instance
-     */
     constructor() {
         super();
 
@@ -715,18 +694,16 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * List of attributes that should trigger attributeChangedCallback
-     * @returns {string[]} Array of attribute names to observe
+     * @returns {string[]}
      */
     static get observedAttributes() {
         return ["click-zoom-rate", "scroll-zoom-rate", "click-zoom"];
     }
 
     /**
-     * Lifecycle callback when an observed attribute changes
-     * @param {string} name - Name of the attribute
-     * @param {string} oldValue - Previous attribute value
-     * @param {string} newValue - New attribute value
+     * @param {string} name
+     * @param {string} oldValue
+     * @param {string} newValue
      */
     attributeChangedCallback(name, oldValue, newValue) {
         try {
@@ -783,7 +760,6 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Initialize component HTML and CSS
     #initializeComponent() {
         try {
             CSS.registerProperty({
@@ -882,7 +858,6 @@ class CanvasComponent extends HTMLElement {
         this.#pointerHandler = new PointerHandler(this);
     }
 
-    // Set up event listeners
     #setupEventListeners() {
         try {
             // Set up ResizeObserver
@@ -956,7 +931,6 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Initialize Web Worker
     #initializeWorker() {
         try {
             this.#worker = new Worker("wasm-worker.js");
@@ -1080,7 +1054,10 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Handle resize events
+    /**
+     * @param {number} clientWidth
+     * @param {number} clientHeight
+     */
     #handleResize(clientWidth, clientHeight) {
         try {
             const sizeMultiplier = 1;
@@ -1088,8 +1065,6 @@ class CanvasComponent extends HTMLElement {
             this.width = Math.floor(clientWidth * sizeMultiplier);
             this.height = Math.floor(clientHeight * sizeMultiplier);
 
-            // No need to calculate offsets for centering in a square
-            // since we're using the full rectangular area
             this.offsetX = (this.width - clientWidth) / 2;
             this.offsetY = (this.height - clientHeight) / 2;
 
@@ -1107,7 +1082,6 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Handle worker initialization complete
     async #handleWorkerInitComplete() {
         try {
             this.#updateWorkerPosition();
@@ -1121,7 +1095,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
-    // Event handlers
+    /**
+     * @param {WheelEvent} event
+     */
     #handleWheel(event) {
         try {
             event.preventDefault();
@@ -1146,6 +1122,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {CustomEvent} event
+     */
     #handlePointerDrag(event) {
         try {
             event = event.detail;
@@ -1162,6 +1141,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {CustomEvent} event
+     */
     #handlePointerZoom(event) {
         try {
             event.preventDefault();
@@ -1206,6 +1188,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {MouseEvent} event
+     */
     #handleMouseMove(event) {
         try {
             this.#mouseX = event.offsetX;
@@ -1216,6 +1201,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {TouchEvent} event
+     */
     #handleTouchStart(event) {
         try {
             event.preventDefault();
@@ -1231,6 +1219,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {TouchEvent} event
+     */
     #handleTouchEnd(event) {
         try {
             event.preventDefault();
@@ -1241,6 +1232,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {TouchEvent} event
+     */
     #handleTouchMove(event) {
         try {
             event.preventDefault();
@@ -1252,6 +1246,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {KeyboardEvent} event
+     */
     #handleKeyDown(event) {
         try {
             const arrowKeys = [
@@ -1274,6 +1271,9 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {KeyboardEvent} event
+     */
     #handleKeyUp(event) {
         try {
             const arrowKeys = [
@@ -1350,6 +1350,12 @@ class CanvasComponent extends HTMLElement {
         }
     }
 
+    /**
+     * @param {HTMLElement} toTransform
+     * @param {number} offsetX
+     * @param {number} offsetY
+     * @param {number} zoom
+     */
     #transformCanvas(toTransform, offsetX, offsetY, zoom) {
         try {
             toTransform.style.transform = `
@@ -1367,7 +1373,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Start the fade-in animation for the canvas
      * @private
      * @returns {Promise<void>}
      */
@@ -1420,7 +1425,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Start the fade-out animation for the canvas
      * @private
      * @returns {Promise<void>}
      */
@@ -1474,7 +1478,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Start the render loop
      * @private
      */
     #startRenderLoop() {
@@ -1637,7 +1640,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Wake up the render loop when image needs to be redrawn
      * @private
      */
     #renderWake() {
@@ -1653,7 +1655,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Clean up resources when component is removed from DOM
      * @private
      */
     #cleanupResources() {
@@ -1706,10 +1707,9 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Read a file into an Uint8Array
      * @private
-     * @param {File} file - The file to read
-     * @returns {Promise<Uint8Array>} The file contents as an array
+     * @param {File} file
+     * @returns {Promise<Uint8Array>}
      */
     async #readFileIntoArray(file) {
         try {
@@ -1735,10 +1735,9 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Load an image from a file
      * @private
-     * @param {File} file - The image file
-     * @returns {Promise<HTMLImageElement>} The loaded image
+     * @param {File} file
+     * @returns {Promise<HTMLImageElement>}
      */
     async #loadImage(file) {
         try {
@@ -1767,12 +1766,11 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Resize an image to fit within maxWidth and maxHeight
      * @private
-     * @param {HTMLImageElement} image - The image to resize
-     * @param {number} maxWidth - Maximum width
-     * @param {number} maxHeight - Maximum height
-     * @returns {HTMLCanvasElement} Canvas containing the resized image
+     * @param {HTMLImageElement} image
+     * @param {number} maxWidth
+     * @param {number} maxHeight
+     * @returns {HTMLCanvasElement}
      */
     #resizeImage(image, maxWidth, maxHeight) {
         try {
@@ -1809,10 +1807,9 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Get image data from a canvas
      * @private
-     * @param {HTMLCanvasElement} canvas - The canvas containing the image
-     * @returns {ImageData} The image data
+     * @param {HTMLCanvasElement} canvas
+     * @returns {ImageData}
      */
     #getImageData(canvas) {
         try {
@@ -1826,10 +1823,9 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Searches the canvas for a provided image
      * @public
-     * @param {File} imageFile - The image file to search for
-     * @param {number} resolution - The resolution to search at
+     * @param {File} imageFile
+     * @param {number} resolution
      * @returns {Promise<void>}
      */
     async searchImage(imageFile, resolution) {
@@ -1893,9 +1889,8 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Loads a position file into the canvas
      * @public
-     * @param {File} file - The position file to load
+     * @param {File} file
      * @returns {Promise<void>}
      */
     async loadFile(file) {
@@ -1944,7 +1939,6 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Saves the current position to a file
      * @public
      * @returns {Promise<void>}
      */
@@ -1983,9 +1977,8 @@ class CanvasComponent extends HTMLElement {
     }
 
     /**
-     * Saves the current image
      * @public
-     * @param {number} resolution - The resolution to save the image with
+     * @param {number} resolution
      * @returns {Promise<void>}
      */
     async saveImage(resolution) {

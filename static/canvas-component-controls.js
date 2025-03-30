@@ -4,9 +4,13 @@ class CanvasComponentControls extends HTMLElement {
     constructor() {
         super();
 
-        // Core properties
+        /** @type {Array} */
         this.canvasComponents = [];
+
+        /** @type {boolean} */
         this._listenersAttached = false;
+
+        /** @type {boolean} */
         this.isDragging = false;
 
         // Create shadow DOM
@@ -427,8 +431,8 @@ class CanvasComponentControls extends HTMLElement {
         this.attachEventListeners();
     }
 
-    // Bind all event handlers at once
     bindEventHandlers() {
+        /** @type {Function} */
         this.handleClickZoomToggleChange = () => {
             const clickZoomToggle =
                 this.shadowRoot.getElementById("click-zoom-toggle");
@@ -437,6 +441,7 @@ class CanvasComponentControls extends HTMLElement {
             });
         };
 
+        /** @type {Function} */
         this.handleZoomRateInput = () => {
             const zoomRateInput =
                 this.shadowRoot.getElementById("zoom-rate-input");
@@ -445,6 +450,7 @@ class CanvasComponentControls extends HTMLElement {
             });
         };
 
+        /** @type {Function} */
         this.handleScrollZoomRateInput = () => {
             const scrollZoomRateInput = this.shadowRoot.getElementById(
                 "scroll-zoom-rate-input"
@@ -454,6 +460,10 @@ class CanvasComponentControls extends HTMLElement {
             });
         };
 
+        /**
+         * @type {Function}
+         * @param {Event} event
+         */
         this.handleFindImageInputChange = (event) => {
             if (event.target.files && event.target.files.length > 0) {
                 const file = event.target.files[0];
@@ -462,6 +472,10 @@ class CanvasComponentControls extends HTMLElement {
             }
         };
 
+        /**
+         * @type {Function}
+         * @param {Event} event
+         */
         this.handlePositionFileInputChange = (event) => {
             if (event.target.files && event.target.files.length > 0) {
                 const file = event.target.files[0];
@@ -474,12 +488,14 @@ class CanvasComponentControls extends HTMLElement {
             }
         };
 
+        /** @type {Function} */
         this.handleSaveOffset = () => {
             this.canvasComponents.forEach((component) => {
                 component.savePosition();
             });
         };
 
+        /** @type {Function} */
         this.handleSaveImage = () => {
             const resolution = parseInt(
                 this.shadowRoot.getElementById("save-image-resolution").value,
@@ -491,7 +507,10 @@ class CanvasComponentControls extends HTMLElement {
             });
         };
 
-        // Add fullscreen handler
+        /**
+         * @type {Function}
+         * @param {Event} event
+         */
         this.handleFullscreenChange = (event) => {
             if (event.target.checked) {
                 this.setAttribute("fake-fullscreen", "");
@@ -500,7 +519,10 @@ class CanvasComponentControls extends HTMLElement {
             }
         };
 
-        // Drag and drop handlers
+        /**
+         * @type {Function}
+         * @param {DragEvent} event
+         */
         this.handleDragEnter = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -510,16 +532,23 @@ class CanvasComponentControls extends HTMLElement {
                 .classList.add("active");
         };
 
+        /**
+         * @type {Function}
+         * @param {DragEvent} event
+         */
         this.handleDragOver = (event) => {
             event.preventDefault();
             event.stopPropagation();
         };
 
+        /**
+         * @type {Function}
+         * @param {DragEvent} event
+         */
         this.handleDragLeave = (event) => {
             event.preventDefault();
             event.stopPropagation();
 
-            // Check if we're leaving to an element outside our component
             const rect = this.getBoundingClientRect();
             const x = event.clientX;
             const y = event.clientY;
@@ -537,6 +566,10 @@ class CanvasComponentControls extends HTMLElement {
             }
         };
 
+        /**
+         * @type {Function}
+         * @param {DragEvent} event
+         */
         this.handleDrop = (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -546,47 +579,45 @@ class CanvasComponentControls extends HTMLElement {
                 .getElementById("drag-drop-overlay")
                 .classList.remove("active");
 
-            // Check if there are files
             if (
                 event.dataTransfer.files &&
                 event.dataTransfer.files.length > 0
             ) {
                 const file = event.dataTransfer.files[0];
 
-                // Only process image files
                 if (file.type.startsWith("image/")) {
                     this.processImageFile(file);
                     return;
                 }
             }
 
-            // If no valid files, try to get HTML fragment
             this.tryExtractImageFromHtml(event.dataTransfer);
         };
 
-        // New method to extract image from HTML
+        /**
+         * @type {Function}
+         * @param {DataTransfer} dataTransfer
+         */
         this.tryExtractImageFromHtml = (dataTransfer) => {
-            // Try to get HTML data
             const html = dataTransfer.getData("text/html");
 
             if (html) {
-                // Create a temporary DOM parser
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, "text/html");
 
-                // Find the first image
                 const img = doc.querySelector("img");
 
                 if (img && img.src) {
-                    // Fetch the image and convert to a file/blob
                     this.fetchImageFromUrl(img.src);
                 }
             }
         };
 
-        // New method to fetch image from URL
+        /**
+         * @type {Function}
+         * @param {string} url
+         */
         this.fetchImageFromUrl = (url) => {
-            // Handle relative URLs
             const fullUrl = new URL(url, window.location.href).href;
 
             fetch(fullUrl)
@@ -599,14 +630,12 @@ class CanvasComponentControls extends HTMLElement {
                     return response.blob();
                 })
                 .then((blob) => {
-                    // Create a File object from the blob
                     const fileName =
                         fullUrl.split("/").pop() || "dragged-image.jpg";
                     const file = new File([blob], fileName, {
                         type: blob.type,
                     });
 
-                    // Process the file
                     this.processImageFile(file);
                 })
                 .catch((error) => {
@@ -615,7 +644,9 @@ class CanvasComponentControls extends HTMLElement {
         };
     }
 
-    // Process an image file for search
+    /**
+     * @param {File} file
+     */
     processImageFile(file) {
         const resolution = parseInt(
             this.shadowRoot.getElementById("image-resolution").value,
@@ -627,18 +658,15 @@ class CanvasComponentControls extends HTMLElement {
         });
     }
 
-    // Attach event listeners
     attachEventListeners() {
         if (this._listenersAttached || !this.shadowRoot) return;
 
         const shadow = this.shadowRoot;
 
-        // Click zoom toggle
         shadow
             .getElementById("click-zoom-toggle")
             ?.addEventListener("change", this.handleClickZoomToggleChange);
 
-        // Zoom rates
         shadow
             .getElementById("zoom-rate-input")
             ?.addEventListener("input", this.handleZoomRateInput);
@@ -646,17 +674,14 @@ class CanvasComponentControls extends HTMLElement {
             .getElementById("scroll-zoom-rate-input")
             ?.addEventListener("input", this.handleScrollZoomRateInput);
 
-        // Image search
         shadow
             .getElementById("find-image-input")
             ?.addEventListener("change", this.handleFindImageInputChange);
 
-        // Position file
         shadow
             .getElementById("file-input")
             ?.addEventListener("change", this.handlePositionFileInputChange);
 
-        // Buttons
         shadow
             .getElementById("save-offset")
             ?.addEventListener("click", this.handleSaveOffset);
@@ -664,12 +689,10 @@ class CanvasComponentControls extends HTMLElement {
             .getElementById("save-image-button")
             ?.addEventListener("click", this.handleSaveImage);
 
-        // Fullscreen toggle
         shadow
             .getElementById("fullscreen-toggle")
             ?.addEventListener("change", this.handleFullscreenChange);
 
-        // Attach drag and drop event listeners to the canvas container
         const canvasContainer = shadow.querySelector(".canvas-container");
         if (canvasContainer) {
             canvasContainer.addEventListener(
@@ -693,7 +716,9 @@ class CanvasComponentControls extends HTMLElement {
         this._listenersAttached = true;
     }
 
-    // Called when element is added to the DOM
+    /**
+     * Called when element is added to the DOM
+     */
     connectedCallback() {
         if (this.parentElement) {
             this.canvasComponents = Array.from(
