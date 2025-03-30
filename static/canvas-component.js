@@ -1059,6 +1059,10 @@ class CanvasComponent extends HTMLElement {
      * @param {number} clientHeight
      */
     #handleResize(clientWidth, clientHeight) {
+        if (clientWidth < 32 || clientHeight < 32) {
+            return;
+        }
+
         try {
             const sizeMultiplier = 1;
 
@@ -1609,6 +1613,10 @@ class CanvasComponent extends HTMLElement {
     }
 
     #updateWorkerPosition() {
+        if (!this.width || !this.height) {
+            return;
+        }
+
         try {
             if (this.#initializedWorkerPosition) {
                 this.#worker.postMessage({
@@ -1616,8 +1624,8 @@ class CanvasComponent extends HTMLElement {
                     offsetX: this.#cachedPosition.offsetX,
                     offsetY: this.#cachedPosition.offsetY,
                     zoom: this.#cachedPosition.zoom,
-                    viewportWidth: this.width || 1,
-                    viewportHeight: this.height || 1,
+                    viewportWidth: this.width,
+                    viewportHeight: this.height,
                     version: this.#positionVersion,
                 });
             } else {
@@ -1629,8 +1637,8 @@ class CanvasComponent extends HTMLElement {
 
                 this.#worker.postMessage({
                     type: "resetPosition",
-                    viewportWidth: this.width || 1,
-                    viewportHeight: this.height || 1,
+                    viewportWidth: this.width,
+                    viewportHeight: this.height,
                 });
             }
         } catch (error) {
