@@ -2,131 +2,123 @@ let memory;
 
 let exports;
 
-let pixelData = new Uint8ClampedArray(0);
+let dataBitmap;
 
-let oldPixelData = new Uint8ClampedArray(0);
+let pollingBitmap = false;
+
+// Simple function to propagate unhandled promise errors
+const propagatePromiseErrors = (promise) => {
+    return promise.catch((error) => {
+        setTimeout(() => {
+            throw error;
+        }, 0);
+    });
+};
 
 const env = {
+    fillImageBitmap: (dataPtr, width, height) => {
+        const data = new Uint8ClampedArray(
+            new Uint8ClampedArray(memory.buffer, dataPtr, width * height * 4)
+        );
+
+        const imageData = new ImageData(data, width, height);
+
+        pollingBitmap = true;
+        setTimeout(() => {
+            propagatePromiseErrors(
+                (async () => {
+                    const startTime = performance.now();
+
+                    // const options = {
+                    //     resizeWidth: 2048,
+                    //     resizeHeight: 2048,
+                    //     resizeQuality: "pixelated",
+                    // };
+
+                    const newDataBitmap = await createImageBitmap(imageData);
+
+                    if (dataBitmap) {
+                        dataBitmap.close();
+                    }
+
+                    dataBitmap = newDataBitmap;
+
+                    pollingBitmap = false;
+
+                    const endTime = performance.now();
+                    const executionTime = endTime - startTime;
+
+                    // console.log(`Execution time: ${executionTime} milliseconds`);
+                })()
+            );
+        }, 0);
+    },
+
+    imageBitmapFilled: () => {
+        return !pollingBitmap;
+    },
+
     renderImage: (
-        dataPtr,
-        width,
-        height,
         offsetX,
         offsetY,
         zoom,
 
-        oldDataPtr,
-        oldWidth,
-        oldHeight,
-        oldOffsetX,
-        oldOffsetY,
-        oldZoom,
+        clipX,
+        clipY,
+
+        clipWidth,
+        clipHeight,
 
         updatedPixels,
-        maxDetail
+        maxDetail,
+        version
     ) => {
-        if (width == 0) {
-            throw new Error("Invalid width");
-        }
-        if (!updatedPixels) {
+        if (!updatedPixels || !dataBitmap) {
             self.postMessage({
                 type: "renderImage",
+
                 data: null,
-                width,
-                height,
                 offsetX,
                 offsetY,
                 zoom,
 
-                oldData: null,
-                oldWidth,
-                oldHeight,
-                oldOffsetX,
-                oldOffsetY,
-                oldZoom,
+                clipX,
+                clipY,
+
+                clipWidth,
+                clipHeight,
 
                 maxDetail,
+                version,
             });
 
             return;
         }
 
-        const startTime = performance.now();
+        self.postMessage(
+            {
+                type: "renderImage",
 
-        if (pixelData.byteLength < width * height * 4) {
-            pixelData = new Uint8ClampedArray(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    dataPtr,
-                    width * height * 4
-                )
-            );
-        } else {
-            pixelData.set(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    dataPtr,
-                    width * height * 4
-                )
-            );
-        }
+                data: dataBitmap,
+                offsetX,
+                offsetY,
+                zoom,
 
-        const data = new Uint8ClampedArray(
-            pixelData.buffer,
-            0,
-            width * height * 4
+                clipX,
+                clipY,
+
+                clipWidth,
+                clipHeight,
+
+                maxDetail,
+                version,
+            },
+            [dataBitmap]
         );
 
-        if (oldPixelData.byteLength < oldWidth * oldHeight * 4) {
-            oldPixelData = new Uint8ClampedArray(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    oldDataPtr,
-                    oldWidth * oldHeight * 4
-                )
-            );
-        } else {
-            oldPixelData.set(
-                new Uint8ClampedArray(
-                    memory.buffer,
-                    oldDataPtr,
-                    oldWidth * oldHeight * 4
-                )
-            );
-        }
-
-        const oldData = new Uint8ClampedArray(
-            new Uint8ClampedArray(
-                memory.buffer,
-                oldDataPtr,
-                oldWidth * oldHeight * 4
-            )
-        );
-
-        const endTime = performance.now();
-        const executionTime = endTime - startTime;
-
-        console.log(`Execution time: ${executionTime} milliseconds`);
-
-        self.postMessage({
-            type: "renderImage",
-            data,
-            width,
-            height,
-            offsetX,
-            offsetY,
-            zoom,
-
-            oldData,
-            oldWidth,
-            oldHeight,
-            oldOffsetX,
-            oldOffsetY,
-            oldZoom,
-
-            maxDetail,
-        });
+        dataBitmap = undefined;
     },
+
     printString: (ptr, len) => {
         // Create a DataView or Uint8Array to access the memory buffer
         const bytes = new Uint8Array(memory.buffer, ptr, len);
@@ -143,27 +135,28 @@ const env = {
     },
 };
 
-fetch("example.wasm", { headers: { "Content-Type": "application/wasm" } })
-    .then((response) => {
-        if (!response.ok) {
-            throw new Error(`Failed to load WASM file: ${response.statusText}`);
-        }
-        return response.arrayBuffer();
-    })
-    .then((bytes) => WebAssembly.instantiate(bytes, { env }))
-    .then((results) => {
-        exports = results.instance.exports;
-        memory = exports.memory;
+propagatePromiseErrors(
+    fetch("example.wasm", { headers: { "Content-Type": "application/wasm" } })
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to load WASM file: ${response.statusText}`
+                );
+            }
+            return response.arrayBuffer();
+        })
+        .then((bytes) => WebAssembly.instantiate(bytes, { env }))
+        .then((results) => {
+            exports = results.instance.exports;
+            memory = exports.memory;
 
-        exports.init();
+            exports.init();
 
-        self.postMessage({ type: "initComplete" });
-    })
-    .catch((error) => {
-        console.error("Error loading or instantiating WASM:", error);
-    });
+            self.postMessage({ type: "initComplete" });
+        })
+);
 
-self.onmessage = async function (e) {
+self.onmessage = function (e) {
     const {
         type,
         canvasWidth,
@@ -171,12 +164,22 @@ self.onmessage = async function (e) {
         offsetArray,
         offsetX,
         offsetY,
+
         mouseX,
         mouseY,
         zoomDelta,
 
+        zoom,
+        viewportWidth,
+        viewportHeight,
+
+        version,
+
+        imageSquareSize,
+
         findImageData,
     } = e.data;
+
     switch (type) {
         case "setOffset": {
             const size = offsetArray.length;
@@ -222,29 +225,33 @@ self.onmessage = async function (e) {
             );
 
             const fileData = new Blob([offsetArray]);
+
+            exports.getOffsetFree();
+
             const fileUrl = URL.createObjectURL(fileData);
             self.postMessage({ type: "saveOffsetComplete", fileUrl: fileUrl });
             break;
         }
 
-        case "zoomViewport": {
-            exports.zoomViewport(
-                canvasWidth,
-                canvasHeight,
-                mouseX,
-                mouseY,
-                zoomDelta
+        case "updatePosition": {
+            exports.updatePosition(
+                offsetX,
+                offsetY,
+                zoom,
+                viewportWidth,
+                viewportHeight,
+                version
             );
 
-            self.postMessage({ type: "zoomViewportComplete" });
+            self.postMessage({ type: "updatePositionComplete" });
 
             break;
         }
 
-        case "moveViewport": {
-            exports.moveViewport(canvasWidth, canvasHeight, offsetX, offsetY);
+        case "resetPosition": {
+            exports.resetPosition(viewportWidth, viewportHeight);
 
-            self.postMessage({ type: "moveViewportComplete" });
+            self.postMessage({ type: "resetPositionComplete" });
 
             break;
         }
@@ -255,8 +262,42 @@ self.onmessage = async function (e) {
             break;
         }
 
+        case "makeImage": {
+            const imageBytes = exports.makeImage(imageSquareSize);
+
+            // Create a blob from the RGBA image data
+            const size = imageSquareSize * imageSquareSize * 4;
+            const imageArray = new Uint8ClampedArray(
+                memory.buffer,
+                imageBytes,
+                size
+            );
+            const imageData = new ImageData(
+                imageArray,
+                imageSquareSize,
+                imageSquareSize
+            );
+            const canvas = new OffscreenCanvas(
+                imageSquareSize,
+                imageSquareSize
+            );
+            const ctx = canvas.getContext("2d");
+            ctx.putImageData(imageData, 0, 0);
+
+            propagatePromiseErrors(
+                canvas.convertToBlob({ type: "image/png" }).then((blob) => {
+                    const imageUrl = URL.createObjectURL(blob);
+                    self.postMessage({ type: "makeImageComplete", imageUrl });
+                })
+            );
+
+            exports.freeImage(imageBytes, imageSquareSize);
+
+            break;
+        }
+
         case "workCycle": {
-            workCycleLoop();
+            propagatePromiseErrors(workCycleLoop());
 
             break;
         }
@@ -267,20 +308,38 @@ self.onmessage = async function (e) {
 };
 
 const channel = new MessageChannel();
-channel.port1.onmessage = workCycleLoop;
 
-function workCycleLoop() {
+channel.port1.onmessage = () => {
+    propagatePromiseErrors(workCycleLoop());
+};
+
+let workCycleSleepTime = 1;
+async function workCycleLoop() {
+    let backoff = true;
     if (exports) {
         const startTime = performance.now();
-        const res = exports.workCycle();
+        backoff = !exports.workCycle() || pollingBitmap;
         const endTime = performance.now();
         const executionTime = endTime - startTime;
-        if (res && executionTime > 3) {
+        if (executionTime > 100) {
             console.log(
                 `workCycle execution time: ${executionTime} milliseconds`
             );
         }
     }
 
-    channel.port2.postMessage("");
+    if (backoff) {
+        // console.log(`sleeping ${workCycleSleepTime} ms...`);
+
+        const prevWorkCycleSleepTime = workCycleSleepTime;
+        workCycleSleepTime = Math.min(workCycleSleepTime * 2, 100);
+        setTimeout(() => {
+            propagatePromiseErrors(workCycleLoop());
+        }, prevWorkCycleSleepTime);
+    } else {
+        workCycleSleepTime = 1;
+        channel.port2.postMessage("");
+    }
+
+    // setTimeout(workCycleLoop, 100);
 }

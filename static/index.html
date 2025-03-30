@@ -1,136 +1,183 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
-        <title>Square</title>
-        <link rel="stylesheet" href="style.css" />
-        <link rel="stylesheet" href="normalize.css" />
-        <link
-            rel="shortcut icon"
-            href="data:image/x-icon;,"
-            type="image/x-icon"
+        <meta name="viewport" content="width=device-width" />
+        <meta
+            name="description"
+            content="Explore the Universal Canvas, an infinitely detailed finite space containing every possible image at every resolution. Zoom in to discover hidden details or use the image search to find specific content."
         />
+        <title>Universal Canvas</title>
+
+        <link rel="icon" type="image/png" href="/favicon-64x64.png" sizes="64x64">
+        <link rel="icon" type="image/png" href="/favicon-128x128.png" sizes="128x128">
+        <link rel="icon" type="image/png" href="/favicon-256x256.png" sizes="256x256">
+        <link rel="icon" type="image/png" href="/favicon-512x512.png" sizes="512x512">
+
+        <link rel="stylesheet" href="normalize.css" />
+        <link rel="stylesheet" href="style.css" />
+
+        <script async src="canvas-component-controls.js"></script>
+        <script async src="canvas-component.js"></script>
     </head>
+
     <body>
         <main>
-            <div class="main-container">
-                <div class="canvas-container">
-                    <canvas id="main-canvas"></canvas>
-                    <div id="canvas-loading"></div>
+            <div class="top-container">
+                <hgroup>
+                    <h1>The Universal Canvas</h1>
+                    <p><em>Author:&nbsp;<a href="https://www.linkedin.com/in/milo-kinkead">Milo Kinkead</a></em></p>
+                </hgroup>
+
+                <hr />
+                <canvas-component-controls>
+                    <canvas-component></canvas-component>
+                </canvas-component-controls>
+                <hr />
+            </div>
+            <div class="max-width-container">
+                <h2>What am I looking at?</h2>
+                <p>
+                    <strong>
+                        You are seeing every work of art, every idea, every
+                        thing, etched onto a single square.
+                    </strong>
+                </p>
+                <p>
+                    However, it may be hard to make out all the details from
+                    your vantage. After all, to fit everything on a finite
+                    canvas you must paint with a very fine brush.
+                </p>
+                <p>
+                    You could squint, but there's no need to strain your eyes.
+                    Simply zoom in to observe the smaller details of the canvas.
+                    Zoom in far enough and you might even find yourself.
+                </p>
+
+                <br />
+                <div class="dotted-box">
+                    <p>
+                        <strong>The Universal Canvas...</strong>
+                    </p>
+                    <ul>
+                        <li>has a finite area, but is infinitely detailed.</li>
+                        <li>contains every image of every resolution.</li>
+                        <li>
+                            can be cut into any number of pieces, and each one
+                            will still contain every image of every resolution.
+                        </li>
+                    </ul>
                 </div>
+                <br />
 
-                <div class="config-container">
-                    <div>
-                        <table>
-                            <tr>
-                                <td>
-                                    <label for="zoom-rate-input"
-                                        >Click zoom rate:</label
-                                    >
-                                </td>
-                                <td>
-                                    <input
-                                        type="range"
-                                        id="zoom-rate-input"
-                                        min="-3"
-                                        max="5"
-                                        step="any"
-                                        value="1"
-                                    />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <label for="scroll-zoom-rate-input"
-                                        >Scroll zoom rate:</label
-                                    >
-                                </td>
-                                <td>
-                                    <input
-                                        type="range"
-                                        id="scroll-zoom-rate-input"
-                                        min="-3"
-                                        max="5"
-                                        step="any"
-                                        value="1"
-                                    />
-                                </td>
-                            </tr>
-                        </table>
+                <p>
+                    You may not believe me. After all, it's easy to make claims
+                    about pseudo-random patterns that 'make sense', but don't
+                    have any actual backing (see "every sequence of digits
+                    exists in pi").
+                </p>
+                <p>
+                    But there's no need to trust me. I understand that this is
+                    hard to believe, that's why I added the image search
+                    feature. Just load any image and I will figure out where it
+                    is in the canvas and zoom in on it for you.
+                </p>
 
-                        <div>
-                            <label for="click-zoom-toggle"
-                                >Click to Zoom:</label
-                            >
-                            <input type="checkbox" id="click-zoom-toggle" />
-                        </div>
-                    </div>
+                <hr />
+                <h2>How is an 'image' defined?</h2>
+                <p>
+                    The Universal Canvas is not made up of pixels. However, the
+                    canvas can be rendered to pixels. Every pixel in a rendering
+                    of the canvas corresponds to a specific square region of the
+                    canvas, and the pixel's color is the average color of the
+                    square region.
+                </p>
+                <p>
+                    An image existing at a given resolution means that there is
+                    a region within the canvas, that, when rendered at said
+                    resolution, would produce the same pixels as the original
+                    image.
+                </p>
 
-                    <div>
-                        <label for="find-image-input">Search for image:</label>
-                        <input
-                            type="file"
-                            id="find-image-input"
-                            accept="image/*"
-                        />
-                        <div id="find-image-drop-zone" class="drop-zone">
-                            Drop image
-                        </div>
-                    </div>
+                <hr />
+                <h2>How am I running this on my computer?</h2>
+                <p>
+                    So, I've gone on about how the Universal Canvas has infinite
+                    detail and contains infinite information, but at the end of
+                    the day there needs to be some way to simulate it without
+                    actually doing infinite computation and storing infinite
+                    data.
+                </p>
 
-                    <div>
-                        <div>
-                            <label for="file-input"
-                                >Load position from file:</label
-                            >
-                            <input type="file" id="file-input" />
-                        </div>
-                        <button id="set-position">Set Position</button>
-                    </div>
-                    <div><button id="save-offset">Save Position</button></div>
-                </div>
+                <p>
+                    The core principle that the implementation of the canvas
+                    relies on is subdivision. The canvas is a square, which can
+                    be split into 4 squares, which can be split into 16 squares,
+                    etc. As we subdivide the canvas we refine the detail of the
+                    rendered colors. We start with a single solid color, then
+                    find the 4 colors that compose it, then find the colors that
+                    compose those colors, etc.
+                </p>
+
+                <p>
+                    The key to making this technique work is the subdivision
+                    function, whose implementation hides the real magic behind
+                    the algorithm. But for now, we can just focus on
+                    <em>using</em> the function.
+                </p>
+
+                <p>
+                    The subdivision function takes a color, state, and a square
+                    region, and outputs 4 colors and 4 states. The 'state' is
+                    just a blob of data that the subdivision function uses to
+                    store information it needs on successive subdivisions. The
+                    'square region' is a region of the canvas that can be
+                    produced by recursively subdividing the full canvas into
+                    quadrants. The outputs of the function are the colors and
+                    states of the 4 quadrants composing the input square region.
+                </p>
+
+                <p>
+                    The square region covering the whole canvas is given a
+                    hardcoded color and state to use as the first input for the
+                    subdivision function.
+                </p>
+
+                <p>
+                    So, once you have this subdivision function, you can render
+                    any rectangular region of the canvas as follows:
+                </p>
+
+                <ul>
+                    <li>
+                        Create a set of square regions that contain a color and
+                        a state. The set should initially contain a single
+                        square region covering the entire canvas, whose color
+                        and state is hardcoded.
+                    </li>
+
+                    <li>
+                        Remove all regions from the set, subdivide them, and add
+                        the new subdivided regions to the set. Filter the set by
+                        removing all regions that don't overlap with the region
+                        you want to render.
+                    </li>
+                    <li>
+                        Let <var>n</var> be 5 or the number of pixels you wish
+                        to render, whichever is larger. If the set contains less
+                        than <var>n</var> regions, repeat the previous step.
+                    </li>
+
+                    <li>
+                        Render the square regions in the set to the screen, each
+                        one mapping to a square of solid color (pixel).
+                    </li>
+                </ul>
+
+                <hr />
+                <br />
+                <em>Further explanations coming soon</em>
+                <br />
             </div>
         </main>
-        <script src="script.js"></script>
     </body>
-
-    <!-- <style>
-        :root {
-            --hovering: 0px;
-        }
-
-        :root:hover {
-            --hovering: 1px;
-        }
-
-        #hover-detector {
-            width: var(--hovering);
-
-            color: hsl(
-                calc(var(--hovering) * 120),
-                100%,
-                50%
-            ); /* Green on hover, red otherwise */
-        }
-    </style>
-
-    <div id="hover-detector"></div>
-
-    <script>
-        const hoverDetector = document.getElementById("hover-detector");
-
-        const resizeObserver = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-
-                if (width === 1) {
-                    console.log("Mouse is in window.");
-                } else {
-                    console.log("Mouse is not in window.");
-                }
-            }
-        });
-
-        // Start observing the size changes of the element
-        resizeObserver.observe(hoverDetector);
-    </script> -->
 </html>
