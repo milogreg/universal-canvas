@@ -364,7 +364,7 @@ fn digitPositionMutation(position: ClientPosition) PositionMutation {
 
         const base_offset_x = @max(0.0, @as(f64, @floatFromInt(position_updated.canvas_width)) * base_zoom_multiplier - @as(f64, @floatFromInt(position_updated.canvas_width))) / 2.0;
 
-        const adjusted_offset_x: isize = @intFromFloat(@round((-(position_updated.offset_x + base_offset_x) / position_updated.zoom) / pixel_ratio));
+        const adjusted_offset_x: isize = @intFromFloat(@trunc((-(position_updated.offset_x + base_offset_x) / position_updated.zoom) / pixel_ratio));
 
         if (adjusted_offset_x > 0) {
             const to_add = @abs(adjusted_offset_x);
@@ -378,7 +378,7 @@ fn digitPositionMutation(position: ClientPosition) PositionMutation {
 
         const base_offset_y = @max(0.0, @as(f64, @floatFromInt(position_updated.canvas_height)) * base_zoom_multiplier - @as(f64, @floatFromInt(position_updated.canvas_height))) / 2.0;
 
-        const adjusted_offset_y: isize = @intFromFloat(@round((-(position_updated.offset_y + base_offset_y) / position_updated.zoom) / pixel_ratio));
+        const adjusted_offset_y: isize = @intFromFloat(@trunc((-(position_updated.offset_y + base_offset_y) / position_updated.zoom) / pixel_ratio));
 
         if (adjusted_offset_y > 0) {
             const to_add = @abs(adjusted_offset_y);
