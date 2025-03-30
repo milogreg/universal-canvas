@@ -294,18 +294,6 @@ pub fn fillPartialSquare(
 
         for (min_current_x..max_current_x) |current_x| {
             for (min_current_y..max_current_y) |current_y| {
-                // const min_final_child_x = ((current_x * square_size) >> @intCast(current_layer));
-                // const min_final_child_y = (current_y * square_size) >> @intCast(current_layer);
-
-                // const max_final_child_x = min_final_child_x + (square_size >> @intCast(current_layer));
-                // const max_final_child_y = min_final_child_y + (square_size >> @intCast(current_layer));
-
-                // if (max_final_child_x <= x_offset or min_final_child_x >= x_offset + output_width or
-                //     max_final_child_y <= y_offset or min_final_child_y >= y_offset + output_height)
-                // {
-                //     continue;
-                // }
-
                 const virtual_digits = VirtualDigitArray.fromDigitArray(digits, current_x, current_y, current_layer);
 
                 var new_states: [4]SelfConsumingReaderState = undefined;
@@ -341,80 +329,37 @@ pub fn fillPartialSquare(
     }
 }
 
-pub fn fillRectIterative(
-    allocator: std.mem.Allocator,
-    state_stems: *StateStems,
-    output_colors: [][]Color,
-) std.mem.Allocator.Error!void {
-    if (output_colors.len == 0 or output_colors[0].len == 0) {
-        return;
-    }
-
-    var state = try FillRectIterationState.init(allocator, state_stems, output_colors);
-    defer state.deinit();
-
-    var count: usize = 0;
-
-    // Process until complete - in a real application, you might process
-    // a smaller number of iterations per frame to maintain responsiveness
-    while (state.iterate(1)) {
-        count += 1;
-    }
-
-    jsPrint("count: {}", .{count});
-}
-
-pub fn fillPartialSquareIterative(
-    allocator: std.mem.Allocator,
-    digits: DigitArray,
-    initial_state: SelfConsumingReaderState,
-    square_size: usize,
-    x_offset: usize,
-    y_offset: usize,
-    output_colors: [][]Color,
-) std.mem.Allocator.Error!void {
-    if (output_colors.len == 0 or output_colors[0].len == 0) {
-        return;
-    }
-
-    var state = try FillPartialSquareIterationState.init(allocator, digits, initial_state, square_size, x_offset, y_offset, output_colors);
-    defer state.deinit();
-
-    var count: usize = 0;
-
-    // Process all at once - this can be changed to process incrementally
-    while (state.iterate(1)) {
-        count += 1;
-    }
-
-    jsPrint("count: {}", .{count});
-}
-
 pub const FillRectIterationState = struct {
     allocator: std.mem.Allocator,
     state_stems: *StateStems,
     output_colors: [][]Color,
 
     layer: usize,
+    outer_layer: usize,
     start_x_offset: usize,
     start_y_offset: usize,
 
-    partial_squares_iteration_states: [4]?FillPartialSquareIterationState,
+    partial_square_idx: usize,
+    partial_square_iteration_state: ?FillPartialSquareIterationState,
 
     pub fn init(
         allocator: std.mem.Allocator,
         state_stems: *StateStems,
         output_colors: [][]Color,
+        max_sub_square_size: usize,
     ) std.mem.Allocator.Error!FillRectIterationState {
         var res: FillRectIterationState = .{
             .allocator = allocator,
             .state_stems = state_stems,
             .output_colors = output_colors,
             .layer = 0,
+            .outer_layer = 0,
             .start_x_offset = 0,
             .start_y_offset = 0,
-            .partial_squares_iteration_states = @splat(null),
+            .partial_square_idx = 0,
+            .partial_square_iteration_state = null,
         };
+        std.debug.assert(std.math.isPowerOfTwo(max_sub_square_size));
 
         if (output_colors.len == 0 or output_colors[0].len == 0) {
             return res;
@@ -423,9 +368,15 @@ pub const FillRectIterationState = struct {
         const width = output_colors[0].len;
         const height = output_colors.len;
 
-        while (state_stems.digits.length > res.layer + 1) {
+        const full_square_size = @max(std.math.ceilPowerOfTwo(usize, width) catch unreachable, std.math.ceilPowerOfTwo(usize, height) catch unreachable);
+
+        res.outer_layer = std.math.log2(full_square_size);
+
+        const sub_square_size = @min(full_square_size, max_sub_square_size);
+
+        while (state_stems.digits.length > res.layer) {
             const current_square_size = @as(usize, 1) << @intCast(res.layer);
-            if (current_square_size * 2 - res.start_x_offset >= width and current_square_size * 2 - res.start_y_offset >= height) {
+            if (current_square_size >= sub_square_size) {
                 break;
             }
 
@@ -442,112 +393,13 @@ pub const FillRectIterationState = struct {
             }
         }
 
-        const sub_square_size = @as(usize, 1) << @intCast(res.layer);
-
-        for (0..res.layer) |_| {
-            state_stems.removeDigit();
-        }
-
-        for (0..2) |chunk_y| {
-            for (0..2) |chunk_x| {
-                // jsPrint("wow {} {}", .{ chunk_x, chunk_y });
-                if ((chunk_x == 1 and (sub_square_size - res.start_x_offset >= width or state_stems.digits.isMaxX())) or (chunk_y == 1 and (sub_square_size - res.start_y_offset >= height or state_stems.digits.isMaxY()))) {
-                    res.partial_squares_iteration_states[chunk_y * 2 + chunk_x] = null;
-                    continue;
-                }
-
-                // jsPrint("see x: {} {} {}", .{ sub_square_size, sub_square_size - res.start_x_offset, width });
-                // jsPrint("see y: {} {} {}", .{ sub_square_size, sub_square_size - res.start_y_offset, height });
-
-                // {
-                //     const num_to_print = 10;
-
-                //     const digits = state_stems.digits;
-
-                //     var list1 = std.ArrayList(u2).init(allocator);
-                //     defer list1.deinit();
-
-                //     for (0..@min(num_to_print, digits.length)) |i| {
-                //         const digit = digits.get(i);
-
-                //         list1.append(digit) catch @panic("OOM");
-                //     }
-
-                //     var list2 = std.ArrayList(u2).init(allocator);
-                //     defer list2.deinit();
-
-                //     for (digits.length -| num_to_print..digits.length) |i| {
-                //         const digit = digits.get(i);
-
-                //         list2.append(digit) catch @panic("OOM");
-                //     }
-
-                //     jsPrint("digits: {any} ... {any}", .{ list1.items, list2.items });
-                // }
-
-                if (chunk_x == 1) {
-                    state_stems.incrementX();
-                }
-                if (chunk_y == 1) {
-                    state_stems.incrementY();
-                }
-
-                const current_chunks_start_x = if (chunk_x == 1) sub_square_size - res.start_x_offset else 0;
-                const current_chunks_start_y = if (chunk_y == 1) sub_square_size - res.start_y_offset else 0;
-
-                const current_chunks_end_x = if (chunk_x == 1) width else @min(width, sub_square_size - res.start_x_offset);
-                const current_chunks_end_y = if (chunk_y == 1) height else @min(height, sub_square_size - res.start_y_offset);
-
-                const current_chunks = try allocator.alloc([]Color, current_chunks_end_y - current_chunks_start_y);
-                errdefer allocator.free(current_chunks);
-
-                for (current_chunks, 0..) |*current_chunks_row, i| {
-                    current_chunks_row.* = output_colors[i + current_chunks_start_y][current_chunks_start_x..current_chunks_end_x];
-                }
-
-                res.partial_squares_iteration_states[chunk_y * 2 + chunk_x] = try FillPartialSquareIterationState.init(
-                    allocator,
-                    state_stems.digits,
-                    try state_stems.endingState(),
-                    sub_square_size,
-                    if (chunk_x == 1) 0 else res.start_x_offset,
-                    if (chunk_y == 1) 0 else res.start_y_offset,
-                    current_chunks,
-                );
-
-                if (chunk_x == 1) {
-                    state_stems.decrementX();
-                }
-                if (chunk_y == 1) {
-                    state_stems.decrementY();
-                }
-            }
-        }
-
-        {
-            var layer_temp = res.layer;
-
-            while (layer_temp > 0) {
-                layer_temp -= 1;
-
-                const x_bit = (res.start_x_offset >> @intCast(layer_temp)) & 1;
-                const y_bit = (res.start_y_offset >> @intCast(layer_temp)) & 1;
-
-                try state_stems.appendDigit(@intCast((y_bit << 1) | x_bit));
-            }
-        }
-
         return res;
     }
 
     pub fn deinit(this: *FillRectIterationState) void {
-        for (0..2) |chunk_y| {
-            for (0..2) |chunk_x| {
-                if (this.partial_squares_iteration_states[chunk_y * 2 + chunk_x]) |*state| {
-                    this.allocator.free(state.output_colors);
-                    state.deinit();
-                }
-            }
+        if (this.partial_square_iteration_state) |*partial_square_iteration_state| {
+            this.allocator.free(partial_square_iteration_state.output_colors);
+            partial_square_iteration_state.deinit();
         }
     }
 
@@ -556,33 +408,91 @@ pub const FillRectIterationState = struct {
             return false;
         }
 
+        const sub_square_size = @as(usize, 1) << @intCast(this.layer);
+
+        const chunk_square_size = 1 + @as(usize, 1) << @intCast(this.outer_layer - this.layer);
+
+        if (this.partial_square_idx >= chunk_square_size * chunk_square_size) {
+            return false;
+        }
+
         for (0..this.layer) |_| {
             this.state_stems.removeDigit();
         }
 
-        var not_done = false;
+        const width = this.output_colors[0].len;
+        const height = this.output_colors.len;
 
-        for (0..2) |chunk_y| {
-            for (0..2) |chunk_x| {
-                if (this.partial_squares_iteration_states[chunk_y * 2 + chunk_x]) |*state| {
-                    if (chunk_x == 1) {
-                        this.state_stems.incrementX();
-                    }
-                    if (chunk_y == 1) {
-                        this.state_stems.incrementY();
+        const end_x_offset = this.start_x_offset + width;
+        const end_y_offset = this.start_y_offset + height;
+
+        while (this.partial_square_idx < chunk_square_size * chunk_square_size) : (this.partial_square_idx += 1) {
+            const partial_square_offset: [2]usize = .{
+                this.partial_square_idx % chunk_square_size,
+                this.partial_square_idx / chunk_square_size,
+            };
+
+            const partial_square_start_offset_x = partial_square_offset[0] * sub_square_size;
+            const partial_square_start_offset_y = partial_square_offset[1] * sub_square_size;
+
+            const partial_square_end_offset_x = partial_square_offset[0] * sub_square_size + sub_square_size;
+            const partial_square_end_offset_y = partial_square_offset[1] * sub_square_size + sub_square_size;
+
+            if (partial_square_start_offset_x < end_x_offset and
+                partial_square_start_offset_y < end_y_offset and
+                partial_square_end_offset_x > this.start_x_offset and
+                partial_square_end_offset_y > this.start_y_offset)
+            {
+                this.state_stems.addX(partial_square_offset[0]);
+                this.state_stems.addY(partial_square_offset[1]);
+
+                if (this.partial_square_iteration_state == null) {
+                    const current_chunks_start_x = partial_square_start_offset_x -| this.start_x_offset;
+                    const current_chunks_start_y = partial_square_start_offset_y -| this.start_y_offset;
+
+                    const current_chunks_end_x = @min(width, partial_square_end_offset_x - this.start_x_offset);
+                    const current_chunks_end_y = @min(height, partial_square_end_offset_y - this.start_y_offset);
+
+                    const current_chunks = try this.allocator.alloc([]Color, current_chunks_end_y - current_chunks_start_y);
+                    errdefer this.allocator.free(current_chunks);
+
+                    for (current_chunks, 0..) |*current_chunks_row, i| {
+                        current_chunks_row.* = this.output_colors[i + current_chunks_start_y][current_chunks_start_x..current_chunks_end_x];
                     }
 
-                    state.digits = this.state_stems.digits;
-
-                    not_done = not_done or state.iterate(iteration_count);
-
-                    if (chunk_x == 1) {
-                        this.state_stems.decrementX();
-                    }
-                    if (chunk_y == 1) {
-                        this.state_stems.decrementY();
-                    }
+                    this.partial_square_iteration_state = try FillPartialSquareIterationState.init(
+                        this.allocator,
+                        this.state_stems.digits,
+                        try this.state_stems.endingState(),
+                        sub_square_size,
+                        this.start_x_offset -| partial_square_start_offset_x,
+                        this.start_y_offset -| partial_square_start_offset_y,
+                        current_chunks,
+                    );
                 }
+
+                break;
+            }
+        }
+
+        if (this.partial_square_iteration_state) |*partial_square_iteration_state| {
+            const partial_square_offset: [2]usize = .{
+                this.partial_square_idx % chunk_square_size,
+                this.partial_square_idx / chunk_square_size,
+            };
+
+            partial_square_iteration_state.digits = this.state_stems.digits;
+
+            const not_done = partial_square_iteration_state.iterate(iteration_count);
+
+            this.state_stems.subtractX(partial_square_offset[0]);
+            this.state_stems.subtractY(partial_square_offset[1]);
+
+            if (!not_done) {
+                this.allocator.free(partial_square_iteration_state.output_colors);
+                partial_square_iteration_state.deinit();
+                this.partial_square_iteration_state = null;
+                this.partial_square_idx += 1;
             }
         }
 
@@ -599,9 +509,10 @@ pub const FillRectIterationState = struct {
             }
         }
 
-        return not_done;
+        return this.partial_square_idx < chunk_square_size * chunk_square_size;
     }
 };
+
 pub const FillPartialSquareIterationState = struct {
     allocator: std.mem.Allocator,
     digits: DigitArray,

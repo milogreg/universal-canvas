@@ -818,6 +818,7 @@ const WorkCycleState = struct {
                         allocator,
                         &state_tree,
                         chunks,
+                        256,
                     ) catch @panic("OOM");
                 }
 
