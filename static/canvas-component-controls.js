@@ -118,6 +118,15 @@ class CanvasComponentControls extends HTMLElement {
                     background-color: var(--bg-button-hover);
                 }
                 
+                /* Add focus styles that match hover styles */
+                .menu-toggle-label:focus-visible,
+                .fullscreen-toggle-label:focus-visible,
+                button:focus-visible {
+                    background-color: var(--bg-button-hover);
+                    outline: 2px solid var(--text-primary);
+                    outline-offset: 2px;
+                }
+                
                 .menu-arrow {
                     display: inline-block;
                     width: 1.25rem;
@@ -209,6 +218,7 @@ class CanvasComponentControls extends HTMLElement {
                 
                 .control-group-label {
                     font-size: 1.2rem;
+                    font-weight: bold;
                 }
 
                 .spacer-1 {
@@ -304,36 +314,36 @@ class CanvasComponentControls extends HTMLElement {
             </style>
             
             <!-- Menu toggle checkbox -->
-            <input type="checkbox" id="menu-toggle">
+            <input type="checkbox" id="menu-toggle" aria-label="Toggle menu visibility">
             
             <!-- Fullscreen toggle checkbox -->
-            <input type="checkbox" id="fullscreen-toggle">
+            <input type="checkbox" id="fullscreen-toggle" aria-label="Toggle fullscreen view">
             
-            <div class="component-container">
+            <div class="component-container" role="application" aria-label="Canvas Component Controls">
                 <!-- Menu toggle button -->
-                <label for="menu-toggle" class="menu-toggle-label" aria-label="Toggle menu">
+                <label for="menu-toggle" class="menu-toggle-label" aria-label="Toggle menu" tabindex="0">
                     <span>Menu</span>
-                    <svg class="menu-arrow" viewBox="0 0 24 12" xmlns="http://www.w3.org/2000/svg">
+                    <svg class="menu-arrow" viewBox="0 0 24 12" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M3 6H18M13 1L18 6L13 11" stroke="currentColor" stroke-width="2" stroke-linecap="butt" stroke-linejoin="miter" fill="none"/>
                     </svg>
                 </label>
                 
                 <div class="layout-container">
-                    <div class="controls-container">
+                    <div class="controls-container" role="region" aria-label="Control panel">
                         <!-- Image search -->
-                        <div class="control-group">
-                            <label class="control-group-label">Image Search</label>
+                        <div class="control-group" role="group" aria-labelledby="image-search-label">
+                            <div class="control-group-label" id="image-search-label">Image Search</div>
                             <div class="spacer-1"></div>
                             <div class="file-upload-container">
-                                <input type="file" id="find-image-input" accept="image/*">
-                                <label for="find-image-input" id="file-upload-label" class="file-upload-label">
+                                <input type="file" id="find-image-input" accept="image/*" aria-label="Select an image to search">
+                                <label for="find-image-input" id="file-upload-label" class="file-upload-label" tabindex="0">
                                     Select an image to search
                                 </label>
                             </div>
                             <div class="spacer-1"></div>
                             <div>
                                 <label for="image-resolution">Resolution:</label>
-                                <select id="image-resolution">
+                                <select id="image-resolution" aria-label="Select image resolution">
                                     <option value="64">64px</option>
                                     <option value="128">128px</option>
                                     <option value="256">256px</option>
@@ -345,12 +355,12 @@ class CanvasComponentControls extends HTMLElement {
                         </div>
 
                         <!-- Save image -->
-                        <div class="control-group">
-                            <label class="control-group-label">Save Image</label>
+                        <div class="control-group" role="group" aria-labelledby="save-image-label">
+                            <div class="control-group-label" id="save-image-label">Save Image</div>
                             <div class="spacer-1"></div>
                             <div>
                                 <label for="save-image-resolution">Resolution:</label>
-                                <select id="save-image-resolution">
+                                <select id="save-image-resolution" aria-label="Select save image resolution">
                                     <option value="64">64px</option>
                                     <option value="128">128px</option>
                                     <option value="256">256px</option>
@@ -360,51 +370,51 @@ class CanvasComponentControls extends HTMLElement {
                                 </select>
                             </div>
                             <div class="spacer-1"></div>
-                            <button id="save-image-button">Save Image</button>
+                            <button id="save-image-button" aria-label="Save image">Save Image</button>
                         </div>
 
                         <!-- Zoom controls -->
-                        <div class="control-group">
-                            <label class="control-group-label">Zoom Settings</label>
+                        <div class="control-group" role="group" aria-labelledby="zoom-settings-label">
+                            <div class="control-group-label" id="zoom-settings-label">Zoom Settings</div>
                             <div class="spacer-1"></div>
                             <div>
                                 <label for="zoom-rate-input">Click zoom rate:</label>
-                                <input type="range" id="zoom-rate-input" min="-3" max="5" step="any" value="1">
+                                <input type="range" id="zoom-rate-input" min="-3" max="5" step="any" value="1" aria-label="Adjust click zoom rate" aria-valuemin="-3" aria-valuemax="5" aria-valuenow="1">
                             </div>
                             <div class="spacer-1"></div>
                             <div>
                                 <label for="scroll-zoom-rate-input">Scroll zoom rate:</label>
-                                <input type="range" id="scroll-zoom-rate-input" min="-3" max="5" step="any" value="1">
+                                <input type="range" id="scroll-zoom-rate-input" min="-3" max="5" step="any" value="1" aria-label="Adjust scroll zoom rate" aria-valuemin="-3" aria-valuemax="5" aria-valuenow="1">
                             </div>
                             <div class="spacer-1"></div>
                             <div>
                                 <label for="click-zoom-toggle">Click to Zoom:</label>
-                                <input type="checkbox" id="click-zoom-toggle">
+                                <input type="checkbox" id="click-zoom-toggle" aria-label="Toggle click to zoom">
                             </div>
                         </div>
                         
                         <!-- Position controls -->
-                        <div class="control-group">
-                            <label class="control-group-label">Position Controls</label>
+                        <div class="control-group" role="group" aria-labelledby="position-controls-label">
+                            <div class="control-group-label" id="position-controls-label">Position Controls</div>
                             <div class="spacer-1"></div>
                             <div class="file-upload-container">
-                                <input type="file" id="file-input">
-                                <label for="file-input" id="position-file-label" class="file-upload-label">
+                                <input type="file" id="file-input" aria-label="Select position file">
+                                <label for="file-input" id="position-file-label" class="file-upload-label" tabindex="0">
                                     Select position file
                                 </label>
                             </div>
                             <div class="spacer-1"></div>
-                            <button id="save-offset">Save Position</button>
+                            <button id="save-offset" aria-label="Save current position">Save Position</button>
                         </div>
                     </div>
                     
-                    <div class="canvas-container">
+                    <div class="canvas-container" role="region" aria-label="Canvas display area">
                         <slot></slot>
                         
                         <!-- Drag and drop overlay -->
-                        <div class="drag-drop-overlay" id="drag-drop-overlay">
+                        <div class="drag-drop-overlay" id="drag-drop-overlay" role="region" aria-label="Drag and drop area">
                             <div class="drag-drop-content">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
                                 </svg>
                                 <div class="drag-drop-title">Drop image to search</div>
@@ -413,11 +423,11 @@ class CanvasComponentControls extends HTMLElement {
                         </div>
                         
                         <!-- Fullscreen toggle button -->
-                        <label for="fullscreen-toggle" class="fullscreen-toggle-label" aria-label="Toggle fullscreen">
-                            <svg class="expand-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <label for="fullscreen-toggle" class="fullscreen-toggle-label" aria-label="Toggle fullscreen" tabindex="0">
+                            <svg class="expand-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
                             </svg>
-                            <svg class="collapse-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <svg class="collapse-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
                             </svg>
                         </label>
@@ -448,6 +458,8 @@ class CanvasComponentControls extends HTMLElement {
             this.canvasComponents.forEach((component) => {
                 component.clickZoomRate = zoomRateInput.value;
             });
+            // Update ARIA value for accessibility
+            zoomRateInput.setAttribute("aria-valuenow", zoomRateInput.value);
         };
 
         /** @type {Function} */
@@ -458,6 +470,11 @@ class CanvasComponentControls extends HTMLElement {
             this.canvasComponents.forEach((component) => {
                 component.scrollZoomRate = scrollZoomRateInput.value;
             });
+            // Update ARIA value for accessibility
+            scrollZoomRateInput.setAttribute(
+                "aria-valuenow",
+                scrollZoomRateInput.value
+            );
         };
 
         /**
@@ -514,8 +531,10 @@ class CanvasComponentControls extends HTMLElement {
         this.handleFullscreenChange = (event) => {
             if (event.target.checked) {
                 this.setAttribute("fake-fullscreen", "");
+                this.setAttribute("aria-expanded", "true");
             } else {
                 this.removeAttribute("fake-fullscreen");
+                this.setAttribute("aria-expanded", "false");
             }
         };
 
@@ -592,6 +611,24 @@ class CanvasComponentControls extends HTMLElement {
             }
 
             this.tryExtractImageFromHtml(event.dataTransfer);
+        };
+
+        /**
+         * @type {Function}
+         * @param {KeyboardEvent} event
+         */
+        this.handleKeyDown = (event) => {
+            // Handle keyboard events for custom controls
+            if (
+                event.target.classList.contains("menu-toggle-label") ||
+                event.target.classList.contains("fullscreen-toggle-label") ||
+                event.target.classList.contains("file-upload-label")
+            ) {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.target.click();
+                }
+            }
         };
 
         /**
@@ -693,6 +730,9 @@ class CanvasComponentControls extends HTMLElement {
             .getElementById("fullscreen-toggle")
             ?.addEventListener("change", this.handleFullscreenChange);
 
+        // Add keyboard event listeners for custom controls
+        shadow.addEventListener("keydown", this.handleKeyDown);
+
         const canvasContainer = shadow.querySelector(".canvas-container");
         if (canvasContainer) {
             canvasContainer.addEventListener(
@@ -725,6 +765,9 @@ class CanvasComponentControls extends HTMLElement {
                 this.parentElement.querySelectorAll("canvas-component")
             );
         }
+
+        // Set initial ARIA expanded state
+        this.setAttribute("aria-expanded", "false");
     }
 }
 
