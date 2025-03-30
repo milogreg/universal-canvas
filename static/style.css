@@ -6,6 +6,9 @@
     --border-color: rgb(160, 160, 160);
     --text-primary: #222222;
     --text-button: rgb(245, 245, 245);
+    --link-color: #0066cc;
+    --link-visited: #551a8b;
+    --link-hover: #004080;
 
     --paragraph-font-size-multiplier: 1.2;
 }
@@ -16,8 +19,10 @@
         --bg-button-hover: rgb(32, 77, 99);
         --bg-primary: rgb(34, 34, 34);
         --bg-secondary: rgb(46, 46, 46);
-        --text-primary: rgb(137, 137, 137);
         --text-primary: rgb(231, 231, 231);
+        --link-color: #4dabff;
+        --link-visited: #c792ea;
+        --link-hover: #82c7ff;
     }
 }
 
@@ -33,6 +38,17 @@ body {
     box-sizing: border-box;
 }
 
+a {
+    color: var(--link-color);
+}
+
+a:visited {
+    color: var(--link-visited);
+}
+
+a:hover, a:focus {
+    color: var(--link-hover);
+}
 
 /* Small devices (phones, 576px and up) */
 @media (min-width: 36rem) {
