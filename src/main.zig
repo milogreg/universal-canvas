@@ -66,13 +66,6 @@ const iteration_rate = 1000000;
 
 var state_iteration_count: usize = 1;
 
-// const root_color: render.Color = .{
-//     .r = 50,
-//     .g = 50,
-//     .b = 50,
-//     .a = 255,
-// };
-
 const root_color: render.Color = .{
     .r = 128,
     .g = 128,
@@ -175,8 +168,6 @@ fn digitDecrement(digit: u2) void {
 
 var wait_until_backup = true;
 
-var has_max_detail = false;
-
 export fn renderPixels() void {
     const repeat = !(backup_client.offset_x == display_client.offset_x and
         backup_client.offset_y == display_client.offset_y and
@@ -188,17 +179,8 @@ export fn renderPixels() void {
 
     backup_client = applyPositionMutation(backup_client, position_mutation);
 
-    // const width_diff = @as(f64, @floatFromInt(display_client.canvas_width)) - @as(f64, @floatFromInt(backup_client.canvas_width));
-    // const height_diff = @as(f64, @floatFromInt(display_client.canvas_height)) - @as(f64, @floatFromInt(backup_client.canvas_height));
-
-    // backup_client.offset_x += (width_diff * backup_client.zoom) / 2;
-    // backup_client.offset_y += (height_diff * backup_client.zoom) / 2;
-
     backup_client_version &= ~(@as(u64, 1));
-
     backup_client_version |= @intFromBool(repeat);
-
-    // jsPrint("repeat: {}", .{repeat});
 
     js.renderImage(
         backup_client.offset_x,
@@ -212,13 +194,9 @@ export fn renderPixels() void {
         @floatFromInt(pixels_clean_region[1][1] - pixels_clean_region[0][1]),
 
         updated_pixels and !wait_until_backup,
-        has_max_detail,
+        false,
         backup_client_version,
     );
-
-    // backup_client_version |= @intFromBool(position_dirty);
-
-    // jsPrint("position_dirty: {}", .{position_dirty});
 
     updated_pixels = false;
 }
@@ -601,42 +579,7 @@ const WorkCycleState = struct {
                 region_clip_max_y = 0;
             }
 
-            // Initialize regions if not already done
             if (this.regions == null) {
-                // if (pixels_offsets) |pixels_offsets_unwrapped| {
-                //     const temp_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
-                //     defer allocator.free(temp_pixels);
-
-                //     for (0..parent_pixels_height) |old_y| {
-                //         for (0..parent_pixels_width) |old_x| {
-                //             const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
-                //             const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
-
-                //             if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
-                //                 temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = parent_pixels[old_y * (parent_pixels_width) + old_x];
-                //             }
-                //         }
-                //     }
-
-                //     @memset(parent_pixels_buf, .{
-                //         .r = 255,
-                //         .g = 0,
-                //         .b = 0,
-                //         .a = 50,
-                //     });
-
-                //     for (0..parent_pixels_height) |old_y| {
-                //         for (0..parent_pixels_width) |old_x| {
-                //             const new_x = @as(isize, @intCast(old_x)) + pixels_offsets_unwrapped[0];
-                //             const new_y = @as(isize, @intCast(old_y)) + pixels_offsets_unwrapped[1];
-
-                //             if (new_x >= 0 and new_x < parent_pixels_width and new_y >= 0 and new_y < parent_pixels_height) {
-                //                 parent_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)] = temp_pixels[@intCast(new_y * @as(isize, @intCast(parent_pixels_width)) + new_x)];
-                //             }
-                //         }
-                //     }
-                // }
-
                 if (pixels_offsets) |pixels_offsets_unwrapped| {
                     const temp_pixels = allocator.alloc(render.Color, parent_pixels.len) catch @panic("OOM");
                     defer allocator.free(temp_pixels);
@@ -673,34 +616,6 @@ const WorkCycleState = struct {
 
                 var clean_pixel_range_x: [2]usize = @splat(0);
                 var clean_pixel_range_y: [2]usize = @splat(0);
-
-                // if (pixels_offsets) |pixels_offsets_unwrapped| {
-                //     if (@abs(pixels_offsets_unwrapped[0]) < parent_pixels_width and @abs(pixels_offsets_unwrapped[1]) < parent_pixels_height) {
-                //         if (pixels_offsets_unwrapped[0] < 0) {
-                //             clean_pixel_range_x = .{
-                //                 0,
-                //                 @intCast(@as(isize, @intCast(parent_pixels_width)) + pixels_offsets_unwrapped[0]),
-                //             };
-                //         } else {
-                //             clean_pixel_range_x = .{
-                //                 @intCast(pixels_offsets_unwrapped[0]),
-                //                 parent_pixels_width,
-                //             };
-                //         }
-
-                //         if (pixels_offsets_unwrapped[1] < 0) {
-                //             clean_pixel_range_y = .{
-                //                 0,
-                //                 @intCast(@as(isize, @intCast(parent_pixels_height)) + pixels_offsets_unwrapped[1]),
-                //             };
-                //         } else {
-                //             clean_pixel_range_y = .{
-                //                 @intCast(pixels_offsets_unwrapped[1]),
-                //                 parent_pixels_height,
-                //             };
-                //         }
-                //     }
-                // }
 
                 if (pixels_offsets) |pixels_offsets_unwrapped| {
                     const pixel_offset_x = pixels_offsets_unwrapped[0];
@@ -909,8 +824,6 @@ const WorkCycleState = struct {
 
             pixels_clean_region = .{ .{ region_clip_min_x, region_clip_min_y }, .{ region_clip_max_x, region_clip_max_y } };
 
-            // pixels_offsets = null;
-
             this.deinitialize();
 
             return false;
@@ -919,12 +832,10 @@ const WorkCycleState = struct {
 
     const RefreshDisplay = struct {
         initialized: bool,
-        display_pixels_copy_state: MemcpyIterationState(render.Color),
         started_filling_bitmap: bool,
 
         pub const init: RefreshDisplay = .{
             .initialized = false,
-            .display_pixels_copy_state = undefined,
             .started_filling_bitmap = false,
         };
 
@@ -948,7 +859,8 @@ const WorkCycleState = struct {
 
                 display_pixels = display_pixels_buf[0..parent_pixels.len];
             }
-            this.display_pixels_copy_state = MemcpyIterationState(render.Color).init(display_pixels, parent_pixels);
+
+            @memcpy(display_pixels, parent_pixels);
         }
 
         fn deinitialize(this: *RefreshDisplay) void {
@@ -965,22 +877,11 @@ const WorkCycleState = struct {
         }
 
         pub fn iterate(this: *RefreshDisplay, iteration_amount: usize) bool {
+            _ = iteration_amount; // autofix
+
             if (!this.initialized) {
                 this.initialize();
 
-                return true;
-            }
-
-            const start_time = js.getTime();
-            defer {
-                const end_time = js.getTime();
-
-                if (end_time - start_time > 10) {
-                    jsPrint("refresh_display time: {d} ms", .{end_time - start_time});
-                }
-            }
-
-            if (this.display_pixels_copy_state.iterate(iteration_amount)) {
                 return true;
             }
 
@@ -1026,45 +927,6 @@ const WorkCycleState = struct {
     }
 };
 
-fn MemcpyIterationState(comptime T: type) type {
-    return struct {
-        dst: []T,
-        src: []T,
-        idx: usize,
-
-        const Self = @This();
-
-        pub fn init(noalias dst: []T, noalias src: []T) Self {
-            return .{
-                .dst = dst,
-                .src = src,
-                .idx = 0,
-            };
-        }
-
-        pub fn iterate(this: *Self, iteration_amount_arg: usize) bool {
-            const iteration_amount = iteration_amount_arg * 100;
-
-            const copies_left = this.dst.len - this.idx;
-
-            if (copies_left <= iteration_amount) {
-                if (copies_left > 0) {
-                    @memcpy(this.dst[this.idx .. this.idx + copies_left], this.src[this.idx .. this.idx + copies_left]);
-                    this.idx += copies_left;
-                }
-
-                return false;
-            }
-
-            @memcpy(this.dst[this.idx .. this.idx + iteration_amount], this.src[this.idx .. this.idx + iteration_amount]);
-
-            this.idx += iteration_amount;
-
-            return true;
-        }
-    };
-}
-
 var work_cycle_state = WorkCycleState.init;
 
 export fn workCycle() bool {
@@ -1073,120 +935,6 @@ export fn workCycle() bool {
 
 export fn init() void {
     state_tree = render.StateStems.init(allocator, root_color) catch @panic("OOM");
-
-    const square_size = 256;
-
-    const starting_colors = allocator.alloc(render.Color, square_size * square_size) catch @panic("OOM");
-    defer allocator.free(starting_colors);
-
-    for (starting_colors, 0..) |*color, i| {
-        const x = i % square_size;
-        const y = i / square_size;
-
-        const radius: comptime_float = square_size / 2;
-        const center_x: comptime_float = square_size / 2;
-        const center_y: comptime_float = square_size / 2;
-
-        // Calculate distance from the center
-        const dx = @as(isize, @intCast(x)) - @as(isize, @intFromFloat(center_x));
-        const dy = @as(isize, @intCast(y)) - @as(isize, @intFromFloat(center_y));
-        const distance_squared = dx * dx + dy * dy;
-
-        // Define eye properties
-        const eye_radius = radius / 8.0;
-        const eye_offset_x = radius / 2.0;
-        const eye_offset_y = radius / 3.0;
-
-        // Left eye center
-        const left_eye_x = center_x - eye_offset_x;
-        const left_eye_y = center_y - eye_offset_y;
-
-        // Right eye center
-        const right_eye_x = center_x + eye_offset_x;
-        const right_eye_y = center_y - eye_offset_y;
-
-        // Mouth properties
-        const mouth_radius = radius / 1.5;
-        const mouth_center_y = center_y + radius / 4.0;
-
-        const dx_left_eye = @as(isize, @intCast(x)) - @as(isize, @intFromFloat(left_eye_x));
-        const dy_left_eye = @as(isize, @intCast(y)) - @as(isize, @intFromFloat(left_eye_y));
-        const distance_left_eye = dx_left_eye * dx_left_eye + dy_left_eye * dy_left_eye;
-
-        const dx_right_eye = @as(isize, @intCast(x)) - @as(isize, @intFromFloat(right_eye_x));
-        const dy_right_eye = @as(isize, @intCast(y)) - @as(isize, @intFromFloat(right_eye_y));
-        const distance_right_eye = dx_right_eye * dx_right_eye + dy_right_eye * dy_right_eye;
-
-        const dx_mouth = @as(isize, @intCast(x)) - @as(isize, @intFromFloat(center_x));
-        const dy_mouth = @as(isize, @intCast(y)) - @as(isize, @intFromFloat(mouth_center_y));
-        const distance_mouth = dx_mouth * dx_mouth + dy_mouth * dy_mouth;
-
-        const is_in_face = distance_squared <= radius * radius;
-        const is_in_left_eye = distance_left_eye <= eye_radius * eye_radius;
-        const is_in_right_eye = distance_right_eye <= eye_radius * eye_radius;
-        const is_in_mouth_arc = (distance_mouth >= @as(isize, @intFromFloat(mouth_radius * 0.7 * mouth_radius * 0.7))) and (distance_mouth <= @as(isize, @intFromFloat(mouth_radius * mouth_radius))) and (dy_mouth > 0); // Only draw lower half of the circle for the mouth
-
-        // Assign colors based on position in smiley face features
-        color.* = if (is_in_face) .{
-            .r = if (is_in_left_eye or is_in_right_eye) 0 else if (is_in_mouth_arc) 255 else 255,
-            .g = if (is_in_left_eye or is_in_right_eye or is_in_mouth_arc) 0 else 255,
-            .b = if (is_in_left_eye or is_in_right_eye or is_in_mouth_arc) 0 else 0,
-            .a = 255,
-        } else .{
-            .r = 123,
-            .g = 100,
-            .b = 100,
-            .a = 255,
-        };
-
-        // Assign colors based on position in smiley face features
-
-        // color.* = if (is_in_face) .{
-        //     .r = if (is_in_left_eye or is_in_right_eye) 0 else if (is_in_mouth_arc) 0 else 127,
-        //     .g = if (is_in_left_eye or is_in_right_eye or is_in_mouth_arc) 0 else 0,
-        //     .b = if (is_in_left_eye or is_in_right_eye or is_in_mouth_arc) 0 else 0,
-        //     .a = 255,
-        // } else .{
-        //     .r = 120,
-        //     .g = 0,
-        //     .b = 0,
-        //     .a = 255,
-        // };
-    }
-
-    // for (0..100000) |i| {
-    //     state_tree.appendDigit(@intCast(i % 4)) catch @panic("OOM");
-    // }
-
-    // state_tree.appendDigit(0) catch @panic("OOM");
-
-    // for (0..1000000) |_| {
-    //     state_tree.appendDigit(3) catch @panic("OOM");
-    // }
-
-    // const color_file = @embedFile("output_image_small.bin");
-    // @memcpy(std.mem.sliceAsBytes(starting_colors), color_file);
-
-    // var enc = render.encodeColors(allocator, starting_colors) catch @panic("OOM");
-    // defer enc.deinit(allocator);
-
-    // for (0..enc.length) |i| {
-    //     const digit = enc.get(i);
-    //     for (0..4) |j| {
-    //         state_tree.appendDigit(j, digit) catch @panic("OOM");
-    //     }
-    // }
-
-    for (0..10) |i| {
-        state_tree.appendDigit(@truncate(i)) catch @panic("OOM");
-    }
-
-    // for (0..std.math.log2(parent_square_size)) |_| {
-    //     state_tree.appendDigit(0) catch @panic("OOM");
-    // }
-
-    // trailing_digit_count = std.math.log2(parent_square_size);
-
 }
 
 var offset_digits_packed_with_digit_offset: []u8 = &.{};
@@ -1260,21 +1008,11 @@ export fn findImage() void {
     parent_pixels_width = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_width)) / pixel_ratio);
     parent_pixels_height = @intFromFloat(@as(f64, @floatFromInt(backup_client.canvas_height)) / pixel_ratio);
 
-    // backup_client.offset_x = (@as(f64, @floatFromInt(backup_client.canvas_width)) - @as(f64, @floatFromInt(image_square_size * pixel_ratio)) / 2.0) / 2.0;
-    // backup_client.offset_y = (@as(f64, @floatFromInt(backup_client.canvas_height)) - @as(f64, @floatFromInt(image_square_size * pixel_ratio)) / 2.0) / 2.0;
-    // backup_client.zoom = 1;
-
     backup_client.offset_x = (@as(f64, @floatFromInt(backup_client.canvas_width)) -
         @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
     backup_client.offset_y = (@as(f64, @floatFromInt(backup_client.canvas_height)) -
         @as(f64, @floatFromInt(((std.math.ceilPowerOfTwo(usize, @min(parent_pixels_width, parent_pixels_height)) catch unreachable) / 2)))) * (pixel_ratio / 2.0);
     backup_client.zoom = 1;
-
-    // backup_client.updatePosition(
-    //     @as(f64, @floatFromInt(backup_client.canvas_width)) / 2.0,
-    //     @as(f64, @floatFromInt(backup_client.canvas_height)) / 2.0,
-    //     0.5,
-    // );
 
     var enc = render.encodeColors(allocator, find_image_data) catch @panic("OOM");
     defer enc.deinit(allocator);
@@ -1300,7 +1038,6 @@ export fn getOffsetAlloc() [*]u8 {
     for (offset_digits_packed, 0..) |*packed_digit, i| {
         packed_digit.* = 0;
         for (0..4) |j| {
-            // const idx = ((i + 1) * 4 - j - 1);
             const idx = i * 4 + j;
             if (idx < state_tree.digits.length) {
                 const offset_digit = state_tree.digits.get(idx);
