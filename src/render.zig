@@ -2497,7 +2497,7 @@ fn splittersEqual(a: [10]u8, b: [10]u8) bool {
 pub fn inAltPath(color: [3]u8, splitters_arg: [10]u8) bool {
     var splitters = splitters_arg;
 
-    // splitters = splitterApplyColorSalt(splitters, color);
+    splitters = splitterApplyColorSalt(splitters, color);
 
     splitters = splitters;
 
